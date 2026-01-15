@@ -176,10 +176,10 @@ export default function Canvas() {
             for (const z of sortedZones) {
                 // "Stable Anchor" Strategy:
                 // Use manualBounds (the user's manually set position/size) as the base.
-                // The Zone grows to contain its assigned Notes, but shrinks back to manualBounds.
+                // CRITICAL: If manualBounds is missing, we must initialize it to prevent "Shadow Effect".
                 const anchor = z.manualBounds || z.bounds;
 
-                const ownNotes = nextNotes.filter(n => n.zoneId === z.id);
+                const ownNotes = nextNotes.filter(n => n && n.zoneId === z.id && n.position);
                 const childIds = childrenByParent.get(z.id) || [];
                 
                 // 1. Calculate Content Bounding Box
@@ -190,6 +190,7 @@ export default function Canvas() {
                 let hasContent = false;
 
                 for (const n of ownNotes) {
+                    if (typeof n.position.x !== 'number' || typeof n.position.y !== 'number') continue;
                     hasContent = true;
                     cMinX = Math.min(cMinX, n.position.x);
                     cMinY = Math.min(cMinY, n.position.y);
@@ -403,6 +404,7 @@ export default function Canvas() {
         const newNotes = notes.filter(n => n.id !== id);
         setNotes(newNotes);
         saveNotes(newNotes);
+        autoGrowZonesToFitNotes(newNotes);
     };
 
     // Keyboard shortcuts
