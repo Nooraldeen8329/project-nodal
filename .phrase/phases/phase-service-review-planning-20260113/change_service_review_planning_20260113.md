@@ -1,0 +1,52 @@
+# change: Service Review Planning (2026-01-13)
+
+## 2026-01-13
+- Add: `.phrase/phases/phase-service-review-planning-20260113/README.md` — 新 phase 入口与范围定义。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 现状事实 + 用户旅途 + Truth Table。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/plan_service_review_planning_20260113.md` — 本 phase 里程碑与范围。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/tech-refer_service_review_planning_20260113.md` — 架构现状、选项、风险与验证方法。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 本 phase 文档/验证活动的 task 列表（不涉及代码实现）。
+- Move: `product_spec.md` -> `.phrase/phases/phase-service-review-planning-20260113/inputs/product_spec.md` — 迁移为输入文档（以 phase 文档为单一事实来源）。
+- Move: `walkthrough.md` -> `.phrase/phases/phase-service-review-planning-20260113/inputs/walkthrough.md` — 迁移为输入文档（以 phase 文档为单一事实来源）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 增补可执行的手动验证清单（用于核验事实为真）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/plan_service_review_planning_20260113.md` — 明确本 phase 仅允许文档类 `taskNNN` 记录。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C01 验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C01 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C02 验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C02 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C03 验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C03 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C04 验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C04 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C05 验证结论（Pass）并登记可读性问题（issue001）。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/issues/issue001_service_review_planning_20260113.md` — SettingsModal 可读性问题（背景透明/缺失导致看不清）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C05 Pass + issue001）。
+- Modify: `.phrase/docs/ISSUES.md` — 增加 issue001 索引。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C06 验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C06 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C07 验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C07 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C08 验证结论（Pass），并更新 “syntax highlighting” 的核验状态。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C08 Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C09 验证结论（Partial）并登记背景图缩放问题（issue002）。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/issues/issue002_service_review_planning_20260113.md` — 背景图缩放缺失/不可用（resize affordance 不足）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C09 Partial + issue002）。
+- Modify: `.phrase/docs/ISSUES.md` — 增加 issue002 索引。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录 C10 验证结论（Pass）并登记“绘制语义对象模型”改进方向（issue003）。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/issues/issue003_service_review_planning_20260113.md` — 绘制底层从像素走向语义对象（scene graph）的改进议题。
+- Modify: `.phrase/docs/ISSUES.md` — 增加 issue003 索引。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（C10 Pass + issue003）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/tech-refer_service_review_planning_20260113.md` — 增补绘制对象模型（scene graph）选项与风险。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/plan_service_review_planning_20260113.md` — 增补下一阶段改进计划草案（基于 issue001/002/003）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 回写运行时验证状态摘要（C09/C10/C08）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 标记 task003 完成（issues 已登记）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 记录画布 pan/zoom 运行时验证结论（Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/task_service_review_planning_20260113.md` — 追加验证进度日志（Pan/Zoom Pass）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/tech-refer_service_review_planning_20260113.md` — 记录绘制模型偏好：不引入 tldraw 类库，优先自研 scene graph + SVG/HTML。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/issues/issue003_service_review_planning_20260113.md` — 补充约束：下一阶段不使用 tldraw 类库。
+- Add: `.phrase/phases/phase-service-review-planning-20260113/issues/issue004_service_review_planning_20260113.md` — Zone 基础组件需求（完整进入归属、zone 移动带动卡片）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 增补 Zone 概念与归属规则（服务设计视角）。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/tech-refer_service_review_planning_20260113.md` — 增补 Zone 作为 first-class node 的数据/交互含义。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/plan_service_review_planning_20260113.md` — 增补下一阶段 Initiative D（Zone/Frame）。
+- Modify: `.phrase/docs/ISSUES.md` — 增加 issue004 索引。
+- Modify: `.phrase/phases/phase-service-review-planning-20260113/spec_service_review_planning_20260113.md` — 更新现状事实：绘制工具链路（C10/Journey 4）已在后续实现阶段移除（task014）。
