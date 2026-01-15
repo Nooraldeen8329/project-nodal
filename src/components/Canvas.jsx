@@ -13,7 +13,7 @@ const ZONE_GRID_GAP = 16;
 const MIN_ZONE_W = CARD_W * 2 + ZONE_GRID_GAP;
 const MIN_ZONE_H = CARD_H * 2 + ZONE_GRID_GAP;
 const ZONE_HANDLE_SIZE = 10;
-const ZONE_PADDING = 8;
+const ZONE_PADDING = 16;
 const ZONE_BORDER_HIT_SIZE = 24;
 
 function pickZoneIdForNotePosition(zones, position) {
