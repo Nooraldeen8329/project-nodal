@@ -57,10 +57,18 @@ export default function StickyNote({
     }, [note.messages, isExpanded]);
 
     const bind = useDrag(({ movement: [mx, my], first, last, memo, event }) => {
-        // Stop propagation on first to prevent Canvas useGesture from stealing the drag
+        // Skip drag if clicking on a button (delete, expand, etc.)
         if (first && event) {
+            const target = event.target;
+            if (target.closest('button')) {
+                return { skip: true };
+            }
+            // Stop propagation on first to prevent Canvas useGesture from stealing the drag
             event.stopPropagation();
         }
+
+        // Skip all processing if we determined this should be skipped
+        if (memo?.skip) return memo;
 
         // Initialize memo with current visual position on start
         if (first) {

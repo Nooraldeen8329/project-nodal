@@ -31,10 +31,11 @@ const normalizeCanvas = (canvas) => {
         notes: Array.isArray(input.notes)
             ? input.notes.map(n => (n && typeof n === 'object' ? { zoneId: null, ...n } : n))
             : [],
-                                    zones: Array.isArray(input.zones) ? input.zones.map(z => ({
-                                        ...z,
-                                        manualBounds: z.manualBounds || z.bounds
-                                    })) : [],        viewport: input.viewport || { x: 0, y: 0, zoom: 1 }
+        zones: Array.isArray(input.zones) ? input.zones.map(z => ({
+            ...z,
+            title: z.title || '',
+            manualBounds: z.manualBounds || z.bounds
+        })) : [], viewport: input.viewport || { x: 0, y: 0, zoom: 1 }
     };
 
     const changed =

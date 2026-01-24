@@ -145,6 +145,8 @@ export default function Canvas() {
     const [selectedZoneId, setSelectedZoneId] = useState(null);
     const [hoverZoneId, setHoverZoneId] = useState(null);  // Zone the note is entering
     const [leavingZoneId, setLeavingZoneId] = useState(null);  // Zone the note is leaving
+    const [editingZoneTitleId, setEditingZoneTitleId] = useState(null);
+    const [zoneTitleDraft, setZoneTitleDraft] = useState('');
     const fileInputRef = useRef(null);
     const isInitialLoadRef = useRef(true);
 
@@ -287,6 +289,12 @@ export default function Canvas() {
             return prevZones.filter(z => z.id !== zoneId);
         });
         setSelectedZoneId(prevId => (prevId === zoneId ? null : prevId));
+    }, []);
+
+    const updateZoneTitle = useCallback((zoneId, title) => {
+        setZones(prevZones =>
+            prevZones.map(z => z.id === zoneId ? { ...z, title } : z)
+        );
     }, []);
 
     const createAndExpandNoteAtWorldPosition = useCallback((p) => {
@@ -493,6 +501,7 @@ export default function Canvas() {
         const newZone = {
             id,
             parentZoneId: parentZone ? parentZone.id : null,
+            title: '',
             bounds,
             manualBounds: bounds,
             createdAt: now
@@ -1102,7 +1111,59 @@ export default function Canvas() {
                                     cursor: 'move',
                                     pointerEvents: 'auto'
                                 }}
-                            />
+                            >
+                                {/* Zone Title */}
+                                {(z.title || isSelected) && (
+                                    <div
+                                        className={`absolute -top-6 left-2 right-2 h-6 flex items-center cursor-text
+                                            ${isSelected ? 'pointer-events-auto' : 'pointer-events-none'}
+                                        `}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (isSelected && editingZoneTitleId !== z.id) {
+                                                setEditingZoneTitleId(z.id);
+                                                setZoneTitleDraft(z.title || '');
+                                            }
+                                        }}
+                                        onDoubleClick={(e) => e.stopPropagation()}
+                                    >
+                                        {editingZoneTitleId === z.id ? (
+                                            <input
+                                                type="text"
+                                                value={zoneTitleDraft}
+                                                onChange={(e) => setZoneTitleDraft(e.target.value)}
+                                                onBlur={() => {
+                                                    updateZoneTitle(z.id, zoneTitleDraft.trim());
+                                                    setEditingZoneTitleId(null);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        updateZoneTitle(z.id, zoneTitleDraft.trim());
+                                                        setEditingZoneTitleId(null);
+                                                    } else if (e.key === 'Escape') {
+                                                        setEditingZoneTitleId(null);
+                                                    }
+                                                }}
+                                                className="w-full bg-white/80 backdrop-blur-sm border border-blue-400 
+                                                    rounded px-2 py-0.5 text-xs font-medium text-neutral-700
+                                                    focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                placeholder="Zone title..."
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            <span
+                                                className={`text-xs font-medium px-2 py-0.5 rounded
+                                                    ${z.title
+                                                        ? 'text-neutral-600 bg-white/60 backdrop-blur-sm'
+                                                        : 'text-neutral-400 italic bg-white/40'}
+                                                `}
+                                            >
+                                                {z.title || (isSelected ? 'Double-click to add title' : '')}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
 
                             {/* Resize Handles (Only when selected) */}
                             {isSelected && (
@@ -1157,15 +1218,33 @@ export default function Canvas() {
                             if (first) {
                                 setSelectedZoneId(null);
                             }
-                            // 使用宽松标准判定进入提示
+
+                            // 获取当前位置对应的目标 zone
                             const targetZoneId = pickHoverZoneId(zones, position);
-                            setHoverZoneId(targetZoneId);
-                            // 使用专门函数判定离开状态
-                            if (isNoteLeavingZone(zones, position, note.zoneId)) {
-                                setLeavingZoneId(note.zoneId);
+                            // 获取 note 的原始归属 zone
+                            const originalZoneId = note.zoneId;
+
+
+                            // 只有目标 zone 与原始 zone 不同时，才显示视觉反馈
+                            if (targetZoneId !== originalZoneId) {
+                                // 正在进入一个新 zone（从外部或从其他 zone 拖入）
+                                if (targetZoneId) {
+                                    setHoverZoneId(targetZoneId);
+                                } else {
+                                    setHoverZoneId(null);
+                                }
+                                // 正在离开原有 zone（拖出到外部或其他 zone）
+                                if (originalZoneId) {
+                                    setLeavingZoneId(originalZoneId);
+                                } else {
+                                    setLeavingZoneId(null);
+                                }
                             } else {
+                                // 在同一个 zone 内拖动（或都在 null），不显示任何反馈
+                                setHoverZoneId(null);
                                 setLeavingZoneId(null);
                             }
+
                             if (last) {
                                 setHoverZoneId(null);
                                 setLeavingZoneId(null);
