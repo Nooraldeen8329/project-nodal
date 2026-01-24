@@ -40,12 +40,12 @@ export default function StickyNote({
     const isModal = variant === 'modal';
     // const [isExpanded, setIsExpanded] = useState(note.isExpanded || false); // Removed local state
     const [isDragging, setIsDragging] = useState(false);
-    const [ghostPosition, setGhostPosition] = useState(note.position);
+    const [ghostPosition, setGhostPosition] = useState(note.position || { x: 0, y: 0 });
     const { settings } = useStore();
     const chatContainerRef = useRef(null);
 
     useEffect(() => {
-        if (isDragging) return;
+        if (isDragging || !note.position) return;
         setGhostPosition(note.position);
     }, [isDragging, note.position]);
 
@@ -56,25 +56,30 @@ export default function StickyNote({
         }
     }, [note.messages, isExpanded]);
 
-    const bind = useDrag(({ delta: [dx, dy], first, last, memo }) => {
-        // Initialize memo with current note position on start
-        if (first) {
-            memo = { x: note.position.x, y: note.position.y };
-            setIsDragging(true);
-            setGhostPosition({ x: note.position.x, y: note.position.y });
+    const bind = useDrag(({ movement: [mx, my], first, last, memo, event }) => {
+        // Stop propagation on first to prevent Canvas useGesture from stealing the drag
+        if (first && event) {
+            event.stopPropagation();
         }
 
-        // Calculate new position in world coordinates
-        let newX = memo.x + (dx / viewport.zoom);
-        let newY = memo.y + (dy / viewport.zoom);
+        // Initialize memo with current visual position on start
+        if (first) {
+            const startPos = ghostPosition || note.position || { x: 0, y: 0 };
+            memo = { x: startPos.x, y: startPos.y };
+            setIsDragging(true);
+        }
+
+        // Ensure memo exists (should always be true after 'first', but safe fallback)
+        if (!memo) memo = ghostPosition || note.position || { x: 0, y: 0 };
+
+        // Calculate new position in world coordinates using movement (cumulative from start)
+        let newX = memo.x + (mx / viewport.zoom);
+        let newY = memo.y + (my / viewport.zoom);
 
         // Clamp to bounds if provided
         if (bounds) {
-            // Use actual rendered dimensions for strict containment
             const currentWidth = isExpanded ? 400 : 200;
             const currentHeight = isExpanded ? 500 : 200;
-
-            // Strict containment: Note must be fully inside the board
             newX = Math.max(0, Math.min(newX, bounds.width - currentWidth));
             newY = Math.max(0, Math.min(newY, bounds.height - currentHeight));
         }
@@ -87,7 +92,7 @@ export default function StickyNote({
             onUpdate(note.id, { position: { x: newX, y: newY } });
         }
 
-        return { x: newX, y: newY };
+        return memo;
     }, {
         pointer: { keys: false },
         filterTaps: true,
@@ -126,12 +131,12 @@ export default function StickyNote({
                 }}
                 transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 30 }}
                 className={`
-                    ${isModal ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] h-[82vh] z-50 shadow-[0_28px_120px_rgba(15,23,42,0.32)]' : 'absolute left-0 top-0 rounded-2xl shadow-[0_16px_60px_rgba(15,23,42,0.16)]'}
+                    ${isModal ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] h-[82vh] z-50 shadow-[0_28px_120px_rgba(15,23,42,0.32)] rounded-2xl' : 'absolute left-0 top-0 rounded-2xl shadow-[0_16px_60px_rgba(15,23,42,0.16)]'}
                     ${!isModal ? 'group relative' : ''}
                     flex flex-col overflow-hidden border
                     ${!isModal && isSelected ? 'border-blue-500/70' : 'border-black/10'}
                     ${!isModal && isDragging ? 'ring-2 ring-blue-500/20' : ''}
-                    ${!isModal ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white' : ''}
+                    ${!isModal ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white touch-none' : ''}
                 `}
                 style={{
                     backgroundColor: note.color || '#fef3c7',

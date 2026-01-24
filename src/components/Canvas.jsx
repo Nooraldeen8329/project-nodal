@@ -10,20 +10,40 @@ import StickyNote from './StickyNote';
 const CARD_W = 200;
 const CARD_H = 200;
 const ZONE_GRID_GAP = 16;
-const MIN_ZONE_W = CARD_W * 2 + ZONE_GRID_GAP;
-const MIN_ZONE_H = CARD_H * 2 + ZONE_GRID_GAP;
+const MIN_ZONE_W = CARD_W + 30;  // Single card + 15px padding on each side
+const MIN_ZONE_H = CARD_H + 30;
 const ZONE_HANDLE_SIZE = 10;
-const ZONE_PADDING = 16;
+const ZONE_PADDING = 15;  // Gap between zone edge and content
 const ZONE_BORDER_HIT_SIZE = 24;
 
-function pickZoneIdForNotePosition(zones, position) {
-    if (!position || !Array.isArray(zones) || zones.length === 0) return null;
+// Helper: 计算note中心点是否在zone内
+function isNoteCenterInZone(position, zone) {
+    if (!position || !zone) return false;
+    const cx = position.x + CARD_W / 2;
+    const cy = position.y + CARD_H / 2;
+    const { x, y, width, height } = zone.bounds;
+    return cx >= x && cx <= x + width && cy >= y && cy <= y + height;
+}
 
+// Helper: 计算note与zone的重叠比例
+function getNoteZoneOverlapRatio(position, zone) {
+    if (!position || !zone) return 0;
     const nx = position.x;
     const ny = position.y;
-    const nw = CARD_W;
-    const nh = CARD_H;
-    const noteArea = nw * nh;
+    const { x: zx, y: zy, width: zw, height: zh } = zone.bounds;
+
+    const ix = Math.max(nx, zx);
+    const iy = Math.max(ny, zy);
+    const iRight = Math.min(nx + CARD_W, zx + zw);
+    const iBottom = Math.min(ny + CARD_H, zy + zh);
+
+    if (ix >= iRight || iy >= iBottom) return 0;
+    return ((iRight - ix) * (iBottom - iy)) / (CARD_W * CARD_H);
+}
+
+// 判定note应该归属哪个zone（用于最终分配，标准较严格：中心点必须在内）
+function pickZoneIdForNotePosition(zones, position) {
+    if (!position || !Array.isArray(zones) || zones.length === 0) return null;
 
     const zoneById = new Map(zones.map(z => [z.id, z]));
     const depthCache = new Map();
@@ -43,36 +63,65 @@ function pickZoneIdForNotePosition(zones, position) {
     let best = null;
 
     for (const z of zones) {
-        const zx = z.bounds.x;
-        const zy = z.bounds.y;
-        const zw = z.bounds.width;
-        const zh = z.bounds.height;
+        // 严格标准：中心点必须在zone内
+        if (!isNoteCenterInZone(position, z)) continue;
 
-        // Calculate Intersection Rectangle
-        const ix = Math.max(nx, zx);
-        const iy = Math.max(ny, zy);
-        const iRight = Math.min(nx + nw, zx + zw);
-        const iBottom = Math.min(ny + nh, zy + zh);
+        const depth = getZoneDepth(z.id);
+        const overlapRatio = getNoteZoneOverlapRatio(position, z);
 
-        if (ix < iRight && iy < iBottom) {
-            const intersectionArea = (iRight - ix) * (iBottom - iy);
-            // Require at least 20% overlap to consider (prevents accidental touches)
-            if (intersectionArea / noteArea < 0.2) continue;
-
-            const depth = getZoneDepth(z.id);
-
-            // Priority: Deeper zones (children) > Larger overlap area
-            if (
-                !best ||
-                depth > best.depth ||
-                (depth === best.depth && intersectionArea > best.intersectionArea)
-            ) {
-                best = { id: z.id, depth, intersectionArea };
-            }
+        // 优先选择更深的嵌套zone，同深度选重叠更多的
+        if (!best || depth > best.depth || (depth === best.depth && overlapRatio > best.overlapRatio)) {
+            best = { id: z.id, depth, overlapRatio };
         }
     }
 
     return best ? best.id : null;
+}
+
+// 判定note正在进入哪个zone（用于拖拽时hover提示）
+function pickHoverZoneId(zones, position) {
+    if (!position || !Array.isArray(zones) || zones.length === 0) return null;
+
+    const zoneById = new Map(zones.map(z => [z.id, z]));
+    const depthCache = new Map();
+
+    const getZoneDepth = (zoneId) => {
+        if (depthCache.has(zoneId)) return depthCache.get(zoneId);
+        let depth = 0;
+        let cur = zoneById.get(zoneId);
+        while (cur && cur.parentZoneId) {
+            depth += 1;
+            cur = zoneById.get(cur.parentZoneId);
+        }
+        depthCache.set(zoneId, depth);
+        return depth;
+    };
+
+    let best = null;
+
+    for (const z of zones) {
+        // 只用中心点判定
+        if (!isNoteCenterInZone(position, z)) continue;
+
+        const depth = getZoneDepth(z.id);
+
+        // 优先选择更深的嵌套zone
+        if (!best || depth > best.depth) {
+            best = { id: z.id, depth };
+        }
+    }
+
+    return best ? best.id : null;
+}
+
+// 判定note是否正在离开某个zone
+function isNoteLeavingZone(zones, position, originalZoneId) {
+    if (!originalZoneId || !position) return false;
+    const zone = zones.find(z => z.id === originalZoneId);
+    if (!zone) return false;
+
+    // 离开判定：中心点移出zone即离开
+    return !isNoteCenterInZone(position, zone);
 }
 
 export default function Canvas() {
@@ -94,8 +143,10 @@ export default function Canvas() {
     const [modalJustClosed, setModalJustClosed] = useState(false);
     const [backgroundImage, setBackgroundImage] = useState(null);
     const [selectedZoneId, setSelectedZoneId] = useState(null);
-    const [hoverZoneId, setHoverZoneId] = useState(null);
+    const [hoverZoneId, setHoverZoneId] = useState(null);  // Zone the note is entering
+    const [leavingZoneId, setLeavingZoneId] = useState(null);  // Zone the note is leaving
     const fileInputRef = useRef(null);
+    const isInitialLoadRef = useRef(true);
 
     useEffect(() => {
         workspacesRef.current = workspaces;
@@ -107,6 +158,7 @@ export default function Canvas() {
 
     // Sync local state with store (only when switching workspace)
     useEffect(() => {
+        isInitialLoadRef.current = true; // Block sync during initialization
         const ws = workspacesRef.current.find(w => w.id === currentWorkspaceId);
         if (!ws) return;
         setViewport(ws.canvas.viewport);
@@ -118,8 +170,15 @@ export default function Canvas() {
         setExpandedNoteId(null);
         setSelectedZoneId(null);
         setBgSelected(false);
+
+        // Use a timeout to ensure state has settled before allowing sync
+        const timer = setTimeout(() => {
+            isInitialLoadRef.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
     }, [currentWorkspaceId]);
 
+    // Callback definitions (must be before useEffect that uses them)
     const saveViewport = useCallback((newViewport) => {
         if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { viewport: newViewport });
     }, [currentWorkspaceId, updateCanvas]);
@@ -140,115 +199,17 @@ export default function Canvas() {
         if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { backgroundTransform: transform });
     }, [currentWorkspaceId, updateCanvas]);
 
-    const autoGrowZonesToFitNotes = useCallback((nextNotes, nextZonesInput) => {
-        // Use provided zones or current state
-        setZones(prevZones => {
-            const currentZones = nextZonesInput || prevZones;
-            if (!Array.isArray(currentZones) || currentZones.length === 0) return currentZones;
+    // Centralized Sync: Notes
+    useEffect(() => {
+        if (!currentWorkspaceId || isInitialLoadRef.current) return;
+        saveNotes(notes);
+    }, [notes, currentWorkspaceId, saveNotes]);
 
-            const zoneById = new Map(currentZones.map(z => [z.id, z]));
-            const childrenByParent = new Map();
-            for (const z of currentZones) {
-                if (z.parentZoneId) {
-                    const list = childrenByParent.get(z.parentZoneId) || [];
-                    list.push(z.id);
-                    childrenByParent.set(z.parentZoneId, list);
-                }
-            }
-
-            // Depth-first or depth-descending calculation to handle nested zones
-            const depthCache = new Map();
-            const getDepth = (zoneId) => {
-                if (depthCache.has(zoneId)) return depthCache.get(zoneId);
-                let depth = 0;
-                let cur = zoneById.get(zoneId);
-                while (cur && cur.parentZoneId) {
-                    depth += 1;
-                    cur = zoneById.get(cur.parentZoneId);
-                }
-                depthCache.set(zoneId, depth);
-                return depth;
-            };
-
-            const sortedZones = [...currentZones].sort((a, b) => getDepth(b.id) - getDepth(a.id));
-            const newBoundsById = new Map();
-
-            for (const z of sortedZones) {
-                // "Stable Anchor" Strategy:
-                // Use manualBounds (the user's manually set position/size) as the base.
-                // CRITICAL: If manualBounds is missing, we must initialize it to prevent "Shadow Effect".
-                const anchor = z.manualBounds || z.bounds;
-
-                const ownNotes = nextNotes.filter(n => n && n.zoneId === z.id && n.position);
-                const childIds = childrenByParent.get(z.id) || [];
-                
-                // 1. Calculate Content Bounding Box
-                let cMinX = Infinity;
-                let cMinY = Infinity;
-                let cMaxX = -Infinity;
-                let cMaxY = -Infinity;
-                let hasContent = false;
-
-                for (const n of ownNotes) {
-                    if (typeof n.position.x !== 'number' || typeof n.position.y !== 'number') continue;
-                    hasContent = true;
-                    cMinX = Math.min(cMinX, n.position.x);
-                    cMinY = Math.min(cMinY, n.position.y);
-                    cMaxX = Math.max(cMaxX, n.position.x + CARD_W);
-                    cMaxY = Math.max(cMaxY, n.position.y + CARD_H);
-                }
-
-                for (const cid of childIds) {
-                    const cb = newBoundsById.get(cid);
-                    if (cb) {
-                        hasContent = true;
-                        cMinX = Math.min(cMinX, cb.x);
-                        cMinY = Math.min(cMinY, cb.y);
-                        cMaxX = Math.max(cMaxX, cb.x + cb.width);
-                        cMaxY = Math.max(cMaxY, cb.y + cb.height);
-                    }
-                }
-
-                // If no content, return to manual bounds
-                if (!hasContent) {
-                     newBoundsById.set(z.id, anchor);
-                     continue;
-                }
-
-                // Add Padding to Content Box
-                cMinX -= ZONE_PADDING;
-                cMinY -= ZONE_PADDING;
-                cMaxX += ZONE_PADDING;
-                cMaxY += ZONE_PADDING;
-
-                // 2. UNION(Anchor, Content)
-                // This ensures the Zone always covers the user's base area AND the extended content.
-                const finalMinX = Math.min(anchor.x, cMinX);
-                const finalMinY = Math.min(anchor.y, cMinY);
-                const finalMaxX = Math.max(anchor.x + anchor.width, cMaxX);
-                const finalMaxY = Math.max(anchor.y + anchor.height, cMaxY);
-
-                newBoundsById.set(z.id, {
-                    x: finalMinX,
-                    y: finalMinY,
-                    width: Math.max(MIN_ZONE_W, finalMaxX - finalMinX),
-                    height: Math.max(MIN_ZONE_H, finalMaxY - finalMinY)
-                });
-            }
-
-            let changed = false;
-            const nextZones = currentZones.map(z => {
-                const nb = newBoundsById.get(z.id);
-                if (!nb) return z;
-                if (nb.width === z.bounds.width && nb.height === z.bounds.height) return z;
-                changed = true;
-                return { ...z, bounds: nb };
-            });
-
-            if (changed) saveZones(nextZones);
-            return changed ? nextZones : currentZones;
-        });
-    }, [saveZones]);
+    // Centralized Sync: Zones
+    useEffect(() => {
+        if (!currentWorkspaceId || isInitialLoadRef.current) return;
+        saveZones(zones);
+    }, [zones, currentWorkspaceId, saveZones]);
 
     const handleBackgroundUpload = (e) => {
         const file = e.target.files?.[0];
@@ -323,12 +284,10 @@ export default function Canvas() {
 
     const deleteZone = useCallback((zoneId) => {
         setZones(prevZones => {
-            const newZones = prevZones.filter(z => z.id !== zoneId);
-            saveZones(newZones);
-            return newZones;
+            return prevZones.filter(z => z.id !== zoneId);
         });
         setSelectedZoneId(prevId => (prevId === zoneId ? null : prevId));
-    }, [saveZones]);
+    }, []);
 
     const createAndExpandNoteAtWorldPosition = useCallback((p) => {
         setSelectedNoteId(null);
@@ -348,15 +307,10 @@ export default function Canvas() {
             createdAt: Date.now()
         };
 
-        setNotes(prevNotes => {
-            const newNotes = [...prevNotes, newNote];
-            saveNotes(newNotes);
-            autoGrowZonesToFitNotes(newNotes);
-            return newNotes;
-        });
+        setNotes(prevNotes => [...prevNotes, newNote]);
 
         setExpandedNoteId(newNote.id);
-    }, [autoGrowZonesToFitNotes, saveNotes, zones]);
+    }, [zones]);
 
     const handleDoubleClick = (e) => {
         // Block note creation when a modal is open or just closed
@@ -385,7 +339,7 @@ export default function Canvas() {
 
     const updateNote = (id, patch) => {
         setNotes(prevNotes => {
-            const newNotes = prevNotes.map(n => {
+            return prevNotes.map(n => {
                 if (n.id !== id) return n;
                 const updated = { ...n, ...patch };
                 if (patch && patch.position) {
@@ -394,17 +348,20 @@ export default function Canvas() {
                 }
                 return updated;
             });
-            saveNotes(newNotes);
-            autoGrowZonesToFitNotes(newNotes);
-            return newNotes;
         });
     };
 
     const deleteNote = (id) => {
-        const newNotes = notes.filter(n => n.id !== id);
-        setNotes(newNotes);
-        saveNotes(newNotes);
-        autoGrowZonesToFitNotes(newNotes);
+        setNotes(prevNotes => prevNotes.filter(n => n.id !== id));
+        // Close modal if the deleted note was expanded
+        if (expandedNoteId === id) {
+            setExpandedNoteId(null);
+            setModalJustClosed(true);
+        }
+        // Deselect if the deleted note was selected
+        if (selectedNoteId === id) {
+            setSelectedNoteId(null);
+        }
     };
 
     // Keyboard shortcuts
@@ -496,14 +453,12 @@ export default function Canvas() {
             dimensions: { width: 200, height: 100 },
             zoneId: null,
             isExpanded: false, // Start collapsed or expanded? Let's start collapsed but user can open.
-            title: `Fork: ${sourceNote.title || 'Note'}`, 
+            title: `Fork: ${sourceNote.title || 'Note'}`,
             messages: [message], // Start with the forked message
             createdAt: Date.now()
         };
 
-        const newNotes = [...notes, newNote];
-        setNotes(newNotes);
-        saveNotes(newNotes);
+        setNotes(prevNotes => [...prevNotes, newNote]);
     };
 
     const handleCanvasClick = (e) => {
@@ -543,16 +498,23 @@ export default function Canvas() {
             createdAt: now
         };
 
-        const newZones = [...zones, newZone];
-        setZones(newZones);
-        saveZones(newZones);
+        setZones(prevZones => [...prevZones, newZone]);
         setSelectedZoneId(id);
     }
 
     useGesture({
         onDrag: ({ offset: [x, y], movement: [mx, my], event, first, last, memo }) => {
-            // Ignore drag if it starts on a note or the backdrop
-            if (event.target.closest('[data-note-id]') || event.target.closest('[data-backdrop]')) return memo;
+            // On first event, check if we should skip this drag entirely
+            if (first) {
+                const isOnNote = event.target.closest('[data-note-id]');
+                const isOnBackdrop = event.target.closest('[data-backdrop]');
+                if (isOnNote || isOnBackdrop) {
+                    return { mode: 'SKIP' };
+                }
+            }
+
+            // Skip all further processing for skipped drags
+            if (memo?.mode === 'SKIP') return memo;
 
             // Background Image Move/Resize Logic (when selected)
             if (bgSelected && backgroundImage) {
@@ -925,52 +887,39 @@ export default function Canvas() {
                 </div>
             </div>
 
-            {/* Toolbar */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 ui-panel p-2 z-10 flex flex-col gap-2 min-w-[280px]">
-                {/* Note */}
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            if (expandedNoteId || modalJustClosed) return;
-                            createAndExpandNoteAtWorldPosition(getWorldCenter());
-                        }}
-                        className="ui-btn ui-btn-secondary ui-btn-sm flex-1 justify-start"
-                        title="New Note"
-                        aria-label="New note"
-                    >
-                        <span className="font-semibold" aria-hidden="true">＋</span>
-                        Note
-                        <span className="ml-auto ui-kbd" aria-hidden="true">N</span>
-                    </button>
-                </div>
+            {/* Toolbar - Horizontal Layout */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 ui-panel px-3 py-2 z-10 flex items-center gap-2">
+                {/* Note Button */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        if (expandedNoteId || modalJustClosed) return;
+                        createAndExpandNoteAtWorldPosition(getWorldCenter());
+                    }}
+                    className="ui-btn ui-btn-secondary ui-btn-sm"
+                    title="New Note (N)"
+                    aria-label="New note"
+                >
+                    <span className="font-semibold" aria-hidden="true">＋</span>
+                    Note
+                </button>
 
-                {/* Zone */}
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => createZone()}
-                        className="ui-btn ui-btn-secondary ui-btn-sm flex-1 justify-start"
-                        title={selectedZoneId ? 'Create Sub-zone inside selected Zone' : 'Create Zone'}
-                        aria-label={selectedZoneId ? 'Create sub-zone inside selected zone' : 'Create zone'}
-                    >
-                        <SquareDashed size={14} />
-                        Zone
-                    </button>
-                    {selectedZoneId && (
-                        <button
-                            type="button"
-                            onClick={() => deleteZone(selectedZoneId)}
-                            className="ui-icon-btn ui-icon-btn-danger"
-                            title="Delete selected Zone"
-                            aria-label="Delete selected zone"
-                        >
-                            <span aria-hidden="true">🗑️</span>
-                        </button>
-                    )}
-                </div>
+                {/* Zone Button */}
+                <button
+                    type="button"
+                    onClick={() => createZone()}
+                    className="ui-btn ui-btn-secondary ui-btn-sm"
+                    title={selectedZoneId ? 'Create Sub-zone inside selected Zone' : 'Create Zone'}
+                    aria-label={selectedZoneId ? 'Create sub-zone inside selected zone' : 'Create zone'}
+                >
+                    <SquareDashed size={14} />
+                    Zone
+                </button>
+
+                {/* Zone Select (only when zones exist) */}
                 {zones.length > 0 && (
-                    <div className="flex gap-2">
+                    <>
+                        <div className="w-px h-5 bg-neutral-200" />
                         <label className="sr-only" htmlFor="zone-select">Selected zone</label>
                         <select
                             id="zone-select"
@@ -978,66 +927,75 @@ export default function Canvas() {
                             value={selectedZoneId || ''}
                             onChange={(e) => setSelectedZoneId(e.target.value || null)}
                         >
-                            <option value="">No zone selected</option>
+                            <option value="">Select Zone</option>
                             {zones.map((z, idx) => (
                                 <option key={z.id} value={z.id}>
                                     {`Zone ${idx + 1}`}
                                 </option>
                             ))}
                         </select>
-                    </div>
+                        {selectedZoneId && (
+                            <button
+                                type="button"
+                                onClick={() => deleteZone(selectedZoneId)}
+                                className="ui-icon-btn ui-icon-btn-danger"
+                                title="Delete selected Zone"
+                                aria-label="Delete selected zone"
+                            >
+                                <span aria-hidden="true">🗑️</span>
+                            </button>
+                        )}
+                    </>
                 )}
 
-                {/* Background Upload Button */}
-                <div className="pt-2">
-                    <div className="ui-divider mb-2" />
-                    <div className="flex gap-2">
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleBackgroundUpload}
-                        className="hidden"
-                    />
+                {/* Divider */}
+                <div className="w-px h-5 bg-neutral-200" />
+
+                {/* Background Upload */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBackgroundUpload}
+                    className="hidden"
+                />
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
+                    title="Upload Background Image"
+                    aria-label="Upload background image"
+                >
+                    <span aria-hidden="true">{backgroundImage ? '🖼️' : '📁'}</span>
+                    Background
+                </button>
+                {backgroundImage && (
                     <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="ui-btn ui-btn-ghost ui-btn-sm flex-1 justify-start"
-                        title="Upload Background Image (Recommended: 1600px wide, 800-5000px range)"
-                        aria-label="Upload background image"
+                        onClick={() => setBgSelected(v => !v)}
+                        className={`ui-btn ui-btn-sm ${bgSelected ? 'ui-btn-primary' : 'ui-btn-secondary'}`}
+                        aria-pressed={bgSelected}
+                        aria-label={bgSelected ? 'Finish editing background' : 'Edit background'}
+                        title={bgSelected ? 'Finish editing background' : 'Edit background'}
                     >
-                        <span aria-hidden="true">{backgroundImage ? '🖼️' : '📁'}</span>
-                        {backgroundImage ? 'Change background' : 'Upload background'}
+                        {bgSelected ? '✓ Done' : 'Edit'}
                     </button>
-                    {backgroundImage && (
-                        <button
-                            type="button"
-                            onClick={() => setBgSelected(v => !v)}
-                            className="ui-btn ui-btn-secondary ui-btn-sm"
-                            aria-pressed={bgSelected}
-                            aria-label={bgSelected ? 'Finish editing background' : 'Edit background'}
-                            title={bgSelected ? 'Finish editing background' : 'Edit background'}
-                        >
-                            {bgSelected ? 'Done' : 'Edit'}
-                        </button>
-                    )}
-                    {backgroundImage && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setBackgroundImage(null);
-                                saveBackgroundImage(null);
-                                setBgSelected(false);
-                            }}
-                            className="ui-icon-btn ui-icon-btn-danger"
-                            title="Remove Background"
-                            aria-label="Remove background image"
-                        >
-                            <span aria-hidden="true">🗑️</span>
-                        </button>
-                    )}
-                    </div>
-                </div>
+                )}
+                {backgroundImage && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setBackgroundImage(null);
+                            saveBackgroundImage(null);
+                            setBgSelected(false);
+                        }}
+                        className="ui-icon-btn ui-icon-btn-danger"
+                        title="Remove Background"
+                        aria-label="Remove background image"
+                    >
+                        <span aria-hidden="true">🗑️</span>
+                    </button>
+                )}
             </div>
 
             {/* World */}
@@ -1107,6 +1065,7 @@ export default function Canvas() {
                 {Array.isArray(zones) && zones.map(z => {
                     const isSelected = z.id === selectedZoneId;
                     const isHover = z.id === hoverZoneId;
+                    const isLeaving = z.id === leavingZoneId;
                     const { x, y, width, height } = z.bounds;
                     const handleBase = `absolute bg-white border border-blue-500 rounded-sm z-50`;
                     const handleStyle = { width: ZONE_HANDLE_SIZE, height: ZONE_HANDLE_SIZE };
@@ -1123,12 +1082,14 @@ export default function Canvas() {
                                 data-zone-id={z.id}
                                 onClick={selectZone}
                                 className={`absolute rounded-2xl transition-all duration-200 backdrop-blur-sm
-                                    ${isSelected || isHover ? 'z-10' : 'z-0'}
-                                    ${isSelected 
-                                        ? 'border-blue-500 bg-blue-500/10 shadow-sm' 
-                                        : (isHover 
-                                            ? 'border-blue-400 bg-blue-100/50 shadow-lg ring-4 ring-blue-500/10' 
-                                            : 'border-neutral-200 bg-neutral-100/40 hover:bg-neutral-100/60 shadow-sm')
+                                    ${isSelected || isHover || isLeaving ? 'z-10' : 'z-0'}
+                                    ${isSelected
+                                        ? 'border-blue-500 bg-blue-500/10 shadow-sm'
+                                        : (isHover
+                                            ? 'border-blue-400 bg-blue-100/50 shadow-lg ring-4 ring-blue-500/10'
+                                            : (isLeaving
+                                                ? 'border-orange-400 bg-orange-100/50 shadow-lg ring-4 ring-orange-500/20'
+                                                : 'border-neutral-200 bg-neutral-100/40 hover:bg-neutral-100/60 shadow-sm'))
                                     }
                                 `}
                                 style={{
@@ -1136,8 +1097,8 @@ export default function Canvas() {
                                     top: y,
                                     width,
                                     height,
-                                    borderWidth: isHover ? 2 : 1,
-                                    borderStyle: 'solid',
+                                    borderWidth: isHover || isLeaving ? 2 : 1,
+                                    borderStyle: isLeaving ? 'dashed' : 'solid',
                                     cursor: 'move',
                                     pointerEvents: 'auto'
                                 }}
@@ -1190,10 +1151,25 @@ export default function Canvas() {
                         onCollapse={() => setExpandedNoteId(null)}
                         viewport={viewport}
                         onFork={(msg) => handleForkNote(note.id, msg)}
-                        onDragMove={(noteId, position, { last }) => {
+                        onDragMove={(noteId, position, { first, last }) => {
                             if (noteId !== note.id) return;
-                            setHoverZoneId(pickZoneIdForNotePosition(zones, position));
-                            if (last) setHoverZoneId(null);
+                            // Clear zone selection when note drag starts
+                            if (first) {
+                                setSelectedZoneId(null);
+                            }
+                            // 使用宽松标准判定进入提示
+                            const targetZoneId = pickHoverZoneId(zones, position);
+                            setHoverZoneId(targetZoneId);
+                            // 使用专门函数判定离开状态
+                            if (isNoteLeavingZone(zones, position, note.zoneId)) {
+                                setLeavingZoneId(note.zoneId);
+                            } else {
+                                setLeavingZoneId(null);
+                            }
+                            if (last) {
+                                setHoverZoneId(null);
+                                setLeavingZoneId(null);
+                            }
                         }}
                         // Hide original note when expanded
                         style={{ opacity: expandedNoteId === note.id ? 0 : 1 }}
