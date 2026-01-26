@@ -98,14 +98,20 @@ export const useStore = create((set, get) => ({
         }
 
         const workspaces = normalizedWorkspaces;
+        import { DEMO_WORKSPACE } from '../data/demo_workspace';
+
+        // ... (existing imports)
+
+        // ...
+
+        const workspaces = normalizedWorkspaces;
         if (workspaces.length === 0) {
-            // Create default workspace if none exist
-            const defaultWs = {
-                id: uuidv4(),
-                name: 'My First Workspace',
-                createdAt: Date.now(),
-                canvas: createDefaultCanvas()
-            };
+            // Create Demo workspace if none exist
+            const defaultWs = DEMO_WORKSPACE;
+            // Ensure ID is unique if we want, but constant is fine for fresh load. 
+            // Better to clone it to avoid reference issues if modified in memory before refresh? 
+            // Actually, just using it is fine for initialization.
+
             await db.workspaces.add(defaultWs);
             set({ workspaces: [defaultWs], currentWorkspaceId: defaultWs.id, isLoading: false });
         } else {
