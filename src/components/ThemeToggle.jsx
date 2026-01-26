@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 
 const THEME_STORAGE_KEY = 'theme';
@@ -14,11 +14,7 @@ function applyTheme(theme) {
 }
 
 export default function ThemeToggle() {
-  const [theme, setTheme] = useState('light');
-
-  useEffect(() => {
-    setTheme(getEffectiveTheme());
-  }, []);
+  const [theme, setTheme] = useState(() => getEffectiveTheme());
 
   const toggle = () => {
     const next = theme === 'dark' ? 'light' : 'dark';

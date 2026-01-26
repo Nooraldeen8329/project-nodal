@@ -1,326 +1,282 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useGesture } from '@use-gesture/react';
 import { AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { SquareDashed } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import StickyNote from './StickyNote';
+import { useCanvasGestures } from '../hooks/useCanvasGestures';
 
-const CARD_W = 200;
-const CARD_H = 200;
+import {
+    CARD_W,
+    CARD_H,
+    MIN_ZONE_W,
+    MIN_ZONE_H,
+    ZONE_HANDLE_SIZE,
+    ZONE_PADDING,
+    ZONE_BORDER_HIT_SIZE,
+    pickHoverZoneId
+} from '../utils/zoneUtils';
+import { screenToWorld } from '../utils/coordinates';
+import { ConnectionsLayer } from './canvas/ConnectionsLayer';
+// TODO: 待后续完全集成
+// import { useCanvasKeyboard } from '../hooks/useCanvasKeyboard';
+// import { useBackgroundImage } from '../hooks/useBackgroundImage';
+
 const ZONE_GRID_GAP = 16;
-const MIN_ZONE_W = CARD_W + 30;  // Single card + 15px padding on each side
-const MIN_ZONE_H = CARD_H + 30;
-const ZONE_HANDLE_SIZE = 10;
-const ZONE_PADDING = 15;  // Gap between zone edge and content
-const ZONE_BORDER_HIT_SIZE = 24;
 
-// Helper: 计算note中心点是否在zone内
-function isNoteCenterInZone(position, zone) {
-    if (!position || !zone) return false;
-    const cx = position.x + CARD_W / 2;
-    const cy = position.y + CARD_H / 2;
-    const { x, y, width, height } = zone.bounds;
-    return cx >= x && cx <= x + width && cy >= y && cy <= y + height;
-}
-
-// Helper: 计算note与zone的重叠比例
-function getNoteZoneOverlapRatio(position, zone) {
-    if (!position || !zone) return 0;
-    const nx = position.x;
-    const ny = position.y;
-    const { x: zx, y: zy, width: zw, height: zh } = zone.bounds;
-
-    const ix = Math.max(nx, zx);
-    const iy = Math.max(ny, zy);
-    const iRight = Math.min(nx + CARD_W, zx + zw);
-    const iBottom = Math.min(ny + CARD_H, zy + zh);
-
-    if (ix >= iRight || iy >= iBottom) return 0;
-    return ((iRight - ix) * (iBottom - iy)) / (CARD_W * CARD_H);
-}
-
-// 判定note应该归属哪个zone（用于最终分配，标准较严格：中心点必须在内）
-function pickZoneIdForNotePosition(zones, position) {
-    if (!position || !Array.isArray(zones) || zones.length === 0) return null;
-
-    const zoneById = new Map(zones.map(z => [z.id, z]));
-    const depthCache = new Map();
-
-    const getZoneDepth = (zoneId) => {
-        if (depthCache.has(zoneId)) return depthCache.get(zoneId);
-        let depth = 0;
-        let cur = zoneById.get(zoneId);
-        while (cur && cur.parentZoneId) {
-            depth += 1;
-            cur = zoneById.get(cur.parentZoneId);
-        }
-        depthCache.set(zoneId, depth);
-        return depth;
-    };
-
-    let best = null;
-
-    for (const z of zones) {
-        // 严格标准：中心点必须在zone内
-        if (!isNoteCenterInZone(position, z)) continue;
-
-        const depth = getZoneDepth(z.id);
-        const overlapRatio = getNoteZoneOverlapRatio(position, z);
-
-        // 优先选择更深的嵌套zone，同深度选重叠更多的
-        if (!best || depth > best.depth || (depth === best.depth && overlapRatio > best.overlapRatio)) {
-            best = { id: z.id, depth, overlapRatio };
-        }
-    }
-
-    return best ? best.id : null;
-}
-
-// 判定note正在进入哪个zone（用于拖拽时hover提示）
-function pickHoverZoneId(zones, position) {
-    if (!position || !Array.isArray(zones) || zones.length === 0) return null;
-
-    const zoneById = new Map(zones.map(z => [z.id, z]));
-    const depthCache = new Map();
-
-    const getZoneDepth = (zoneId) => {
-        if (depthCache.has(zoneId)) return depthCache.get(zoneId);
-        let depth = 0;
-        let cur = zoneById.get(zoneId);
-        while (cur && cur.parentZoneId) {
-            depth += 1;
-            cur = zoneById.get(cur.parentZoneId);
-        }
-        depthCache.set(zoneId, depth);
-        return depth;
-    };
-
-    let best = null;
-
-    for (const z of zones) {
-        // 只用中心点判定
-        if (!isNoteCenterInZone(position, z)) continue;
-
-        const depth = getZoneDepth(z.id);
-
-        // 优先选择更深的嵌套zone
-        if (!best || depth > best.depth) {
-            best = { id: z.id, depth };
-        }
-    }
-
-    return best ? best.id : null;
-}
-
-// 判定note是否正在离开某个zone
-function isNoteLeavingZone(zones, position, originalZoneId) {
-    if (!originalZoneId || !position) return false;
-    const zone = zones.find(z => z.id === originalZoneId);
-    if (!zone) return false;
-
-    // 离开判定：中心点移出zone即离开
-    return !isNoteCenterInZone(position, zone);
-}
 
 export default function Canvas() {
-    const { workspaces, currentWorkspaceId, updateCanvas } = useStore();
+    const {
+        workspaces,
+        currentWorkspaceId,
+        updateCanvas,
+        addNote,
+        updateNote: updateNoteAction,
+        deleteNote: deleteNoteAction,
+        addConnection,
+        addZone,
+        updateZone,
+
+        deleteZone: deleteZoneAction,
+        deleteConnection, // Added
+        moveZone,
+        resizeZone,
+        updateViewport,
+        updateBackgroundTransform
+    } = useStore();
     const currentWorkspace = workspaces.find(w => w.id === currentWorkspaceId);
 
+    // ========== 从 Store 读取持久化数据 ==========
+    const canvas = currentWorkspace?.canvas || {};
+    const zones = canvas.zones || [];
+    const notes = canvas.notes || [];
+    const connections = canvas.connections || [];
+    const viewport = canvas.viewport || { x: 0, y: 0, zoom: 1 };
+    const backgroundImage = canvas.backgroundImage || null;
+    const backgroundTransform = canvas.backgroundTransform || { x: 0, y: 0, scale: 1 };
+
+    // ========== 统一的数据更新函数 ==========
+    const patchCanvas = useCallback((patch) => {
+        if (!currentWorkspaceId) return;
+        updateCanvas(currentWorkspaceId, patch);
+    }, [currentWorkspaceId, updateCanvas]);
+
+    // ========== Refs ==========
     const containerRef = useRef(null);
     const modalContentRef = useRef(null);
     const modalPreviouslyFocusedRef = useRef(null);
-    const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
-    const viewportRef = useRef(viewport);
-    const workspacesRef = useRef(workspaces);
+    const fileInputRef = useRef(null);
+
+    // ========== 仅 UI 状态（不持久化） ==========
     const [bgSelected, setBgSelected] = useState(false);
-    const [bgTransform, setBgTransform] = useState({ x: 0, y: 0, scale: 1 });
-    const [zones, setZones] = useState([]);
-    const [notes, setNotes] = useState([]);
     const [selectedNoteId, setSelectedNoteId] = useState(null);
     const [expandedNoteId, setExpandedNoteId] = useState(null);
     const [modalJustClosed, setModalJustClosed] = useState(false);
-    const [backgroundImage, setBackgroundImage] = useState(null);
     const [selectedZoneId, setSelectedZoneId] = useState(null);
-    const [hoverZoneId, setHoverZoneId] = useState(null);  // Zone the note is entering
-    const [leavingZoneId, setLeavingZoneId] = useState(null);  // Zone the note is leaving
+    const [hoverZoneId, setHoverZoneId] = useState(null);
+    const [leavingZoneId, setLeavingZoneId] = useState(null);
     const [editingZoneTitleId, setEditingZoneTitleId] = useState(null);
     const [zoneTitleDraft, setZoneTitleDraft] = useState('');
-    const fileInputRef = useRef(null);
-    const isInitialLoadRef = useRef(true);
 
-    useEffect(() => {
-        workspacesRef.current = workspaces;
-    }, [workspaces]);
+    const [connectionDrag, setConnectionDrag] = useState(null);
+    const [selectedConnectionId, setSelectedConnectionId] = useState(null); // Added
+    // eslint-disable-next-line no-unused-vars
+    const [draggingNoteIds, setDraggingNoteIds] = useState(new Map());
 
-    useEffect(() => {
-        viewportRef.current = viewport;
+    // 坐标转换函数：屏幕坐标 -> 世界坐标 (使用统一坐标工具)
+    const toWorld = useCallback((clientX, clientY) => {
+        if (!containerRef.current) return { x: 0, y: 0 };
+        const rect = containerRef.current.getBoundingClientRect();
+        const screenX = clientX - rect.left;
+        const screenY = clientY - rect.top;
+        return screenToWorld({ x: screenX, y: screenY }, viewport);
     }, [viewport]);
 
-    // Sync local state with store (only when switching workspace)
+    // 获取世界中心点 (使用统一坐标工具)
+    const getWorldCenter = useCallback(() => {
+        if (!containerRef.current) return { x: 0, y: 0 };
+        const rect = containerRef.current.getBoundingClientRect();
+        const centerScreen = { x: rect.width / 2, y: rect.height / 2 };
+        return screenToWorld(centerScreen, viewport);
+    }, [viewport]);
+
+    // Keep toWorld stable for callbacks using ref
+    const toWorldRef = useRef(toWorld);
     useEffect(() => {
-        isInitialLoadRef.current = true; // Block sync during initialization
-        const ws = workspacesRef.current.find(w => w.id === currentWorkspaceId);
-        if (!ws) return;
-        setViewport(ws.canvas.viewport);
-        setNotes(ws.canvas.notes || []);
-        setZones(ws.canvas.zones || []);
-        setBackgroundImage(ws.canvas.backgroundImage || null);
-        setBgTransform(ws.canvas.backgroundTransform || { x: 0, y: 0, scale: 1 });
-        setSelectedNoteId(null);
-        setExpandedNoteId(null);
-        setSelectedZoneId(null);
-        setBgSelected(false);
+        toWorldRef.current = toWorld;
+    }, [toWorld]);
 
-        // Use a timeout to ensure state has settled before allowing sync
-        const timer = setTimeout(() => {
-            isInitialLoadRef.current = false;
-        }, 100);
-        return () => clearTimeout(timer);
-    }, [currentWorkspaceId]);
+    // 创建并展开笔记
+    // 创建并展开笔记
+    const createAndExpandNoteAtWorldPosition = useCallback((worldPos) => {
+        const newId = uuidv4();
+        const newNote = {
+            id: newId,
+            position: worldPos,
+            dimensions: { width: CARD_W, height: CARD_H },
+            zoneId: null,
+            isExpanded: false,
+            title: '',
+            messages: [],
+            createdAt: Date.now()
+        };
+        addNote(currentWorkspaceId, newNote);
+        setExpandedNoteId(newId);
+    }, [currentWorkspaceId, addNote]);
 
-    // Callback definitions (must be before useEffect that uses them)
-    const saveViewport = useCallback((newViewport) => {
-        if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { viewport: newViewport });
-    }, [currentWorkspaceId, updateCanvas]);
+    // 删除 Zone
+    // 删除 Zone
+    const deleteZone = useCallback((zoneId) => {
+        deleteZoneAction(currentWorkspaceId, zoneId);
 
-    const saveNotes = useCallback((newNotes) => {
-        if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { notes: newNotes });
-    }, [currentWorkspaceId, updateCanvas]);
+        if (selectedZoneId === zoneId) {
+            setSelectedZoneId(null);
+        }
+    }, [currentWorkspaceId, deleteZoneAction, selectedZoneId]);
 
-    const saveZones = useCallback((newZones) => {
-        if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { zones: newZones });
-    }, [currentWorkspaceId, updateCanvas]);
+    // 更新 Zone 标题
+    const updateZoneTitle = useCallback((zoneId, title) => {
+        updateZone(currentWorkspaceId, zoneId, { title });
+    }, [currentWorkspaceId, updateZone]);
 
-    const saveBackgroundImage = useCallback((imageData) => {
-        if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { backgroundImage: imageData });
-    }, [currentWorkspaceId, updateCanvas]);
-
-    const saveBackgroundTransform = useCallback((transform) => {
-        if (currentWorkspaceId) updateCanvas(currentWorkspaceId, { backgroundTransform: transform });
-    }, [currentWorkspaceId, updateCanvas]);
-
-    // Centralized Sync: Notes
-    useEffect(() => {
-        if (!currentWorkspaceId || isInitialLoadRef.current) return;
-        saveNotes(notes);
-    }, [notes, currentWorkspaceId, saveNotes]);
-
-    // Centralized Sync: Zones
-    useEffect(() => {
-        if (!currentWorkspaceId || isInitialLoadRef.current) return;
-        saveZones(zones);
-    }, [zones, currentWorkspaceId, saveZones]);
-
-    const handleBackgroundUpload = (e) => {
+    // 背景图片上传处理
+    const handleBackgroundUpload = useCallback((e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
-        // Constants
-        const MIN_WIDTH = 800;
-        const MAX_WIDTH = 5000;
-        const TARGET_WIDTH = 1600;
-        const COMPRESSION_QUALITY = 0.85;
 
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = new Image();
             img.onload = () => {
-                // 1. Validate dimensions
-                if (img.width < MIN_WIDTH) {
-                    alert(`图片宽度太小（${img.width}px）。最小宽度：${MIN_WIDTH}px\n建议：使用至少 1600px 宽的图片以获得最佳效果。`);
-                    return;
-                }
-                if (img.width > MAX_WIDTH) {
-                    alert(`图片宽度过大（${img.width}px）。最大宽度：${MAX_WIDTH}px\n建议：请先压缩图片或使用较小尺寸。`);
-                    return;
-                }
-
-                // 2. Calculate target dimensions
-                const scale = TARGET_WIDTH / img.width;
-                const targetHeight = Math.round(img.height * scale);
-
-                // 3. Create canvas for resizing
-                const canvas = document.createElement('canvas');
-                canvas.width = TARGET_WIDTH;
-                canvas.height = targetHeight;
-                const ctx = canvas.getContext('2d');
-
-                // 4. Draw and compress
-                ctx.drawImage(img, 0, 0, TARGET_WIDTH, targetHeight);
-                const processedDataUrl = canvas.toDataURL('image/jpeg', COMPRESSION_QUALITY);
-
-                // 5. Store metadata for display scaling
-                const imageData = {
-                    dataUrl: processedDataUrl,
+                const bgData = {
+                    dataUrl: event.target.result,
                     originalWidth: img.width,
                     originalHeight: img.height,
-                    displayWidth: TARGET_WIDTH,
-                    displayHeight: targetHeight
+                    displayWidth: img.width,
+                    displayHeight: img.height
                 };
-
-                setBackgroundImage(imageData);
-                saveBackgroundImage(imageData);
+                patchCanvas({ backgroundImage: bgData });
             };
             img.src = event.target.result;
         };
         reader.readAsDataURL(file);
-    };
+    }, [patchCanvas]);
 
-    // Helper: Screen to World
-    const toWorld = useCallback((cx, cy) => {
-        const rect = containerRef.current.getBoundingClientRect();
-        const v = viewportRef.current;
-        return {
-            x: (cx - rect.left - v.x) / v.zoom,
-            y: (cy - rect.top - v.y) / v.zoom
-        };
-    }, []);
+    const handleNoteDrag = useCallback((noteId, pos, meta) => {
+        // Handle Note Position Dragging (updates draggingNoteIds for ConnectionsLayer)
+        if (pos && meta?.first !== undefined) {
+            if (meta.first) {
+                // Start dragging: add to map
+                setDraggingNoteIds(prev => new Map(prev).set(noteId, pos));
+            } else if (meta.last) {
+                // End dragging: remove from map
+                setDraggingNoteIds(prev => {
+                    const next = new Map(prev);
+                    next.delete(noteId);
+                    return next;
+                });
+            } else {
+                // During drag: update position in map
+                setDraggingNoteIds(prev => new Map(prev).set(noteId, pos));
+            }
+            return;
+        }
 
-    const getWorldCenter = useCallback(() => {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return { x: 0, y: 0 };
-        return toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    }, [toWorld]);
+        if (!meta) return;
 
-    const deleteZone = useCallback((zoneId) => {
-        setZones(prevZones => {
-            return prevZones.filter(z => z.id !== zoneId);
-        });
-        setSelectedZoneId(prevId => (prevId === zoneId ? null : prevId));
-    }, []);
+        // Handle Connection Dragging
+        const toWorldFn = toWorldRef.current;
+        if (meta.type === 'connection-start') {
+            const { event } = meta;
+            const p = toWorldFn(event.clientX, event.clientY);
+            setConnectionDrag({ sourceId: noteId, currentPoint: p });
+            return;
+        }
 
-    const updateZoneTitle = useCallback((zoneId, title) => {
-        setZones(prevZones =>
-            prevZones.map(z => z.id === zoneId ? { ...z, title } : z)
-        );
-    }, []);
+        if (meta.type === 'connection-move') {
+            const { event } = meta;
+            const p = toWorldFn(event.clientX, event.clientY);
+            setConnectionDrag(prev => prev ? { ...prev, currentPoint: p } : null);
+            return;
+        }
 
-    const createAndExpandNoteAtWorldPosition = useCallback((p) => {
-        setSelectedNoteId(null);
+        if (meta.type === 'connection-end') {
+            const { event } = meta;
+            const p = toWorldFn(event.clientX, event.clientY);
+            setConnectionDrag(null);
 
-        const notePosition = { x: p.x - 100, y: p.y - 50 };
-        const zoneId = pickZoneIdForNotePosition(zones, notePosition);
+            const targetNote = notes.find(n => {
+                if (n.id === noteId) return false;
+                const w = CARD_W;
+                const h = CARD_H;
+                return (
+                    p.x >= n.position.x &&
+                    p.x <= n.position.x + w &&
+                    p.y >= n.position.y &&
+                    p.y <= n.position.y + h
+                );
+            });
 
-        const newNote = {
-            id: uuidv4(),
-            position: notePosition, // Center on click
-            dimensions: { width: 200, height: 100 },
-            zoneId,
-            isExpanded: false,
-            title: 'New Note',
-            summary: '',
-            messages: [],
-            createdAt: Date.now()
-        };
+            if (targetNote) {
+                const fromId = noteId;
+                const toId = targetNote.id;
 
-        setNotes(prevNotes => [...prevNotes, newNote]);
+                const exists = connections.some(c =>
+                    (c.fromId === fromId && c.toId === toId) ||
+                    (c.fromId === toId && c.toId === fromId)
+                );
 
-        setExpandedNoteId(newNote.id);
-    }, [zones]);
+                if (!exists) {
+                    addConnection(currentWorkspaceId, fromId, toId);
+                }
+            }
+            return;
+        }
+    }, [connections, notes, currentWorkspaceId, addConnection]); // Removed toWorld dependency
 
-    const handleDoubleClick = (e) => {
+    const handleDragMove = useCallback((noteId, position, meta) => {
+        if (meta && meta.type && meta.type.startsWith('connection-')) {
+            handleNoteDrag(noteId, position, meta);
+            return;
+        }
+
+        const { first, last } = meta;
+
+        if (first) {
+            setSelectedZoneId(null);
+            setSelectedConnectionId(null); // Added
+        }
+
+        const targetZoneId = pickHoverZoneId(zones, position);
+        const note = notes.find(n => n.id === noteId);
+        if (!note) return;
+
+        const originalZoneId = note.zoneId;
+
+        if (targetZoneId !== originalZoneId) {
+            if (targetZoneId) {
+                setHoverZoneId(targetZoneId);
+            } else {
+                setHoverZoneId(null);
+            }
+            if (originalZoneId) {
+                setLeavingZoneId(originalZoneId);
+            } else {
+                setLeavingZoneId(null);
+            }
+        } else {
+            setHoverZoneId(null);
+            setLeavingZoneId(null);
+        }
+
+        if (last) {
+            setHoverZoneId(null);
+            setLeavingZoneId(null);
+        }
+    }, [zones, notes, handleNoteDrag]);
+
+    const handleDoubleTap = (e) => {
         // Block note creation when a modal is open or just closed
         if (expandedNoteId || modalJustClosed) {
             // Reset the just‑closed flag after it has blocked this click
@@ -345,22 +301,13 @@ export default function Canvas() {
         createAndExpandNoteAtWorldPosition(p);
     };
 
-    const updateNote = (id, patch) => {
-        setNotes(prevNotes => {
-            return prevNotes.map(n => {
-                if (n.id !== id) return n;
-                const updated = { ...n, ...patch };
-                if (patch && patch.position) {
-                    const zoneId = pickZoneIdForNotePosition(zones, patch.position);
-                    if (updated.zoneId !== zoneId) return { ...updated, zoneId };
-                }
-                return updated;
-            });
-        });
-    };
+    const updateNote = useCallback((id, patch) => {
+        updateNoteAction(currentWorkspaceId, id, patch);
+    }, [currentWorkspaceId, updateNoteAction]);
 
-    const deleteNote = (id) => {
-        setNotes(prevNotes => prevNotes.filter(n => n.id !== id));
+    const deleteNote = useCallback((id) => {
+        deleteNoteAction(currentWorkspaceId, id);
+
         // Close modal if the deleted note was expanded
         if (expandedNoteId === id) {
             setExpandedNoteId(null);
@@ -370,7 +317,7 @@ export default function Canvas() {
         if (selectedNoteId === id) {
             setSelectedNoteId(null);
         }
-    };
+    }, [currentWorkspaceId, deleteNoteAction, expandedNoteId, selectedNoteId]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -393,11 +340,12 @@ export default function Canvas() {
 
             if (e.key === 'Backspace' || e.key === 'Delete') {
                 if (selectedZoneId) deleteZone(selectedZoneId);
+                if (selectedConnectionId) deleteConnection(currentWorkspaceId, selectedConnectionId); // Added
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [createAndExpandNoteAtWorldPosition, deleteZone, expandedNoteId, getWorldCenter, modalJustClosed, selectedZoneId]);
+    }, [createAndExpandNoteAtWorldPosition, deleteZone, expandedNoteId, getWorldCenter, modalJustClosed, selectedZoneId, selectedConnectionId, deleteConnection, currentWorkspaceId]);
 
     useEffect(() => {
         if (!expandedNoteId) return;
@@ -444,7 +392,7 @@ export default function Canvas() {
         };
     }, [expandedNoteId]);
 
-    const handleForkNote = (sourceNoteId, message) => {
+    const handleForkNote = useCallback((sourceNoteId, message) => {
         const sourceNote = notes.find(n => n.id === sourceNoteId);
         if (!sourceNote) return;
 
@@ -460,22 +408,27 @@ export default function Canvas() {
             position: newPosition,
             dimensions: { width: 200, height: 100 },
             zoneId: null,
-            isExpanded: false, // Start collapsed or expanded? Let's start collapsed but user can open.
+            isExpanded: false,
             title: `Fork: ${sourceNote.title || 'Note'}`,
-            messages: [message], // Start with the forked message
+            messages: [message],
             createdAt: Date.now()
         };
 
-        setNotes(prevNotes => [...prevNotes, newNote]);
-    };
+        addNote(currentWorkspaceId, newNote);
+    }, [notes, currentWorkspaceId, addNote]);
 
     const handleCanvasClick = (e) => {
         if (!e.target.closest('[data-zone-id]')) {
             setSelectedZoneId(null);
         }
+        setSelectedConnectionId(null); // Added: Click background/unhandled areas deselects connection
     };
 
-    function createZone() {
+    const handleExpandNote = useCallback((noteId) => {
+        setExpandedNoteId(noteId);
+    }, []);
+
+    const createZone = useCallback(() => {
         const id = uuidv4();
         const now = Date.now();
 
@@ -500,315 +453,37 @@ export default function Canvas() {
 
         const newZone = {
             id,
-            parentZoneId: parentZone ? parentZone.id : null,
-            title: '',
             bounds,
-            manualBounds: bounds,
-            createdAt: now
+            manualBounds: bounds, // Sync manualBounds on creation
+            title: '',
+            createdAt: now,
+            parentZoneId: parentZone?.id || null
         };
 
-        setZones(prevZones => [...prevZones, newZone]);
+        addZone(currentWorkspaceId, newZone);
         setSelectedZoneId(id);
-    }
+    }, [addZone, currentWorkspaceId, selectedZoneId, zones, getWorldCenter]);
 
-    useGesture({
-        onDrag: ({ offset: [x, y], movement: [mx, my], event, first, last, memo }) => {
-            // On first event, check if we should skip this drag entirely
-            if (first) {
-                const isOnNote = event.target.closest('[data-note-id]');
-                const isOnBackdrop = event.target.closest('[data-backdrop]');
-                if (isOnNote || isOnBackdrop) {
-                    return { mode: 'SKIP' };
-                }
-            }
 
-            // Skip all further processing for skipped drags
-            if (memo?.mode === 'SKIP') return memo;
 
-            // Background Image Move/Resize Logic (when selected)
-            if (bgSelected && backgroundImage) {
-                const handleTarget = event.target.closest('[data-bg-handle]');
-                if (first && handleTarget) {
-                    const handle = handleTarget.getAttribute('data-bg-handle');
-                    const baseW =
-                        (typeof backgroundImage === 'object' && backgroundImage?.displayWidth) ||
-                        (typeof backgroundImage === 'object' && backgroundImage?.originalWidth) ||
-                        1600;
-                    const baseH =
-                        (typeof backgroundImage === 'object' && backgroundImage?.displayHeight) ||
-                        (typeof backgroundImage === 'object' && backgroundImage?.originalHeight) ||
-                        900;
-                    const startScale = bgTransform.scale || 1;
-                    const startW = baseW * startScale;
-                    const startH = baseH * startScale;
-
-                    return {
-                        mode: 'BG_RESIZE',
-                        handle,
-                        baseW,
-                        baseH,
-                        startX: bgTransform.x,
-                        startY: bgTransform.y,
-                        startScale,
-                        startW,
-                        startH
-                    };
-                }
-
-                if (memo?.mode === 'BG_RESIZE') {
-                    const { handle, baseW, baseH, startX, startY, startScale, startW, startH } = memo;
-                    const dx = mx / viewport.zoom;
-                    const dy = my / viewport.zoom;
-
-                    const anchorByHandle = () => {
-                        switch (handle) {
-                            case 'tl':
-                                return { ax: startX + startW, ay: startY + startH, flipX: true, flipY: true };
-                            case 'tr':
-                                return { ax: startX, ay: startY + startH, flipX: false, flipY: true };
-                            case 'bl':
-                                return { ax: startX + startW, ay: startY, flipX: true, flipY: false };
-                            case 'br':
-                            default:
-                                return { ax: startX, ay: startY, flipX: false, flipY: false };
-                        }
-                    };
-
-                    const { ax, ay, flipX, flipY } = anchorByHandle();
-                    const ddx = flipX ? -dx : dx;
-                    const ddy = flipY ? -dy : dy;
-
-                    const scaleX = (startW + ddx) / startW;
-                    const scaleY = (startH + ddy) / startH;
-                    const nextScale = Math.max(0.1, Math.min(5, startScale * Math.max(scaleX, scaleY)));
-
-                    const nextW = baseW * nextScale;
-                    const nextH = baseH * nextScale;
-
-                    const nextX = flipX ? ax - nextW : ax;
-                    const nextY = flipY ? ay - nextH : ay;
-
-                    const nextTransform = { x: nextX, y: nextY, scale: nextScale };
-                    setBgTransform(nextTransform);
-                    if (last) saveBackgroundTransform(nextTransform);
-                    return memo;
-                }
-
-                const newTransform = { ...bgTransform, x, y };
-                setBgTransform(newTransform);
-                if (last) saveBackgroundTransform(newTransform);
-                return memo;
-            }
-
-            if (first) {
-                const zoneHandleTarget = event.target.closest('[data-zone-handle]');
-                if (zoneHandleTarget) {
-                    const handle = zoneHandleTarget.getAttribute('data-zone-handle');
-                    const id = zoneHandleTarget.getAttribute('data-zone-id');
-                    const zone = zones.find(z => z.id === id);
-                    if (!zone) return memo;
-                    setSelectedZoneId(id);
-                    return {
-                        mode: 'ZONE_RESIZE',
-                        id,
-                        handle,
-                        initialBounds: { ...zone.bounds }
-                    };
-                }
-
-                const zoneTarget = event.target.closest('[data-zone-id]');
-                if (zoneTarget) {
-                    const id = zoneTarget.getAttribute('data-zone-id');
-                    const zone = zones.find(z => z.id === id);
-                    if (!zone) return memo;
-                    setSelectedZoneId(id);
-
-                    const getZoneSubtreeIds = (rootId) => {
-                        const result = [rootId];
-                        for (let i = 0; i < result.length; i += 1) {
-                            const parentId = result[i];
-                            for (const z of zones) {
-                                if (z.parentZoneId === parentId) result.push(z.id);
-                            }
-                        }
-                        return result;
-                    };
-
-                    const zoneIds = getZoneSubtreeIds(id);
-                    const zoneBoundsById = new Map(
-                        zoneIds
-                            .map(zoneId => zones.find(z => z.id === zoneId))
-                            .filter(Boolean)
-                            .map(z => [z.id, { ...z.bounds }])
-                    );
-                    const notePosById = new Map(
-                        notes
-                            .filter(n => zoneIds.includes(n.zoneId))
-                            .map(n => [n.id, { ...n.position }])
-                    );
-
-                    return {
-                        mode: 'ZONE_MOVE',
-                        id,
-                        initialBounds: { ...zone.bounds },
-                        zoneIds,
-                        zoneBoundsById,
-                        notePosById
-                    };
-                }
-
-                return {
-                    mode: 'PAN',
-                    initialViewport: { ...viewport }
-                };
-            }
-
-            if (memo.mode === 'ZONE_MOVE') {
-                const { zoneIds, zoneBoundsById, notePosById } = memo;
-                const dx = mx / viewport.zoom;
-                const dy = my / viewport.zoom;
-
-                let newZones = null;
-                let newNotes = null;
-
-                setZones(prevZones => {
-                    const nextZones = prevZones.map(z => {
-                        if (!zoneIds?.includes?.(z.id)) return z;
-                        const base = zoneBoundsById.get(z.id);
-                        if (!base) return z;
-                        const nextB = { ...base, x: base.x + dx, y: base.y + dy };
-                        return { ...z, bounds: nextB, manualBounds: nextB };
-                    });
-                    newZones = nextZones;
-                    return nextZones;
-                });
-
-                setNotes(prevNotes => {
-                    const nextNotes = prevNotes.map(n => {
-                        const base = notePosById.get(n.id);
-                        if (!base) return n;
-                        if (!zoneIds?.includes?.(n.zoneId)) return n;
-                        return { ...n, position: { x: base.x + dx, y: base.y + dy } };
-                    });
-                    newNotes = nextNotes;
-                    return nextNotes;
-                });
-
-                if (last) {
-                    if (newZones) saveZones(newZones);
-                    if (newNotes) saveNotes(newNotes);
-                }
-                return memo;
-            }
-
-            if (memo.mode === 'ZONE_RESIZE') {
-                const { id, handle, initialBounds } = memo;
-                const dx = mx / viewport.zoom;
-                const dy = my / viewport.zoom;
-
-                let x0 = initialBounds.x;
-                let y0 = initialBounds.y;
-                let w0 = initialBounds.width;
-                let h0 = initialBounds.height;
-
-                const hasL = handle.includes('l');
-                const hasR = handle.includes('r');
-                const hasT = handle.includes('t');
-                const hasB = handle.includes('b');
-
-                let newX = x0 + (hasL ? dx : 0);
-                let newY = y0 + (hasT ? dy : 0);
-                let newW = w0 + (hasR ? dx : hasL ? -dx : 0);
-                let newH = h0 + (hasB ? dy : hasT ? -dy : 0);
-
-                if (newW < MIN_ZONE_W) {
-                    newW = MIN_ZONE_W;
-                    if (hasL) newX = x0 + (w0 - MIN_ZONE_W);
-                }
-                if (newH < MIN_ZONE_H) {
-                    newH = MIN_ZONE_H;
-                    if (hasT) newY = y0 + (h0 - MIN_ZONE_H);
-                }
-
-                const newBounds = { x: newX, y: newY, width: newW, height: newH };
-                const newZones = zones.map(z => (z.id === id ? { ...z, bounds: newBounds, manualBounds: newBounds } : z));
-                setZones(newZones);
-
-                const inner = {
-                    x: newBounds.x + ZONE_PADDING,
-                    y: newBounds.y + ZONE_PADDING,
-                    w: newBounds.width - ZONE_PADDING * 2,
-                    h: newBounds.height - ZONE_PADDING * 2
-                };
-                const minX = inner.x;
-                const minY = inner.y;
-                const maxX = inner.x + inner.w - CARD_W;
-                const maxY = inner.y + inner.h - CARD_H;
-
-                const clampedNotes = notes.map(n => {
-                    if (n.zoneId !== id) return n;
-                    const px = Math.max(minX, Math.min(n.position.x, maxX));
-                    const py = Math.max(minY, Math.min(n.position.y, maxY));
-                    if (px === n.position.x && py === n.position.y) return n;
-                    return { ...n, position: { x: px, y: py } };
-                });
-                setNotes(clampedNotes);
-
-                if (last) {
-                    saveZones(newZones);
-                    saveNotes(clampedNotes);
-                }
-                return memo;
-            }
-
-            if (memo.mode === 'PAN') {
-                const newV = { ...memo.initialViewport, x: x, y: y };
-                setViewport(newV);
-                if (last) saveViewport(newV);
-                return memo;
-            }
-
-            return memo;
-        },
-        // 背景图的缩放（使用同一个 pinch 手势，只在 bgSelected 时生效）
-        onPinch: ({ offset: [d], event, last }) => {
-            if (event.target.closest('[data-backdrop]')) return;
-            if (bgSelected) {
-                const newTransform = { ...bgTransform, scale: d };
-                setBgTransform(newTransform);
-                if (last) saveBackgroundTransform(newTransform);
-                return;
-            }
-            const newV = { ...viewport, zoom: d };
-            setViewport(newV);
-            if (last) saveViewport(newV);
-        },
-        onWheel: ({ event, delta: [dx, dy], ctrlKey, last }) => {
-            if (event.target.closest('[data-backdrop]')) return;
-            if (ctrlKey) event.preventDefault();
-            if (ctrlKey) {
-                const newZoom = Math.max(0.1, Math.min(5, viewport.zoom - dy * 0.01));
-                const newV = { ...viewport, zoom: newZoom };
-                setViewport(newV);
-                if (last) saveViewport(newV);
-            } else {
-                const newX = viewport.x - dx;
-                const newY = viewport.y - dy;
-                const newV = { ...viewport, x: newX, y: newY };
-                setViewport(newV);
-                if (last) saveViewport(newV);
-            }
-        }
-    }, {
-        target: containerRef,
-        drag: {
-            from: () => [viewport.x, viewport.y],
-            // If pen mode, we don't want to accumulate drag offset for panning
-            enabled: true,
-        },
-        enabled: !expandedNoteId, // Disable gestures when a note is expanded
-        pinch: { scaleBounds: { min: 0.1, max: 5 }, modifierKey: null },
-        eventOptions: { passive: false }
+    // Canvas gestures (pan, zoom, zone drag/resize, background drag/resize)
+    useCanvasGestures({
+        containerRef,
+        viewport,
+        zones,
+        notes,
+        backgroundImage,
+        backgroundTransform,
+        bgSelected,
+        expandedNoteId,
+        patchCanvas,
+        setSelectedZoneId,
+        currentWorkspaceId,
+        moveZone,
+        resizeZone,
+        updateViewport,
+        updateBackgroundTransform,
+        onDoubleTap: handleDoubleTap
     });
 
     if (!currentWorkspace) return <div className="flex items-center justify-center h-full text-neutral-400">No Workspace Selected</div>;
@@ -817,10 +492,10 @@ export default function Canvas() {
         <div
             ref={containerRef}
             className="w-full h-full relative overflow-hidden touch-none cursor-grab active:cursor-grabbing"
-            onDoubleClick={handleDoubleClick}
             onClick={handleCanvasClick}
         >
             <div className="absolute inset-0 ui-dot-grid pointer-events-none" />
+
             {/* Global Backdrop & Modal (Portal to body) */}
             {expandedNoteId && createPortal(
                 <>
@@ -875,8 +550,8 @@ export default function Canvas() {
                                             onSelect={() => { }}
                                             isExpanded={true}
                                             onExpand={() => { }}
-                                            viewport={viewport}
-                                            onFork={(msg) => handleForkNote(expandedNote.id, msg)}
+                                            zoom={viewport.zoom}
+                                            onFork={handleForkNote}
                                         />
                                     </div>
                                 </div>
@@ -928,7 +603,7 @@ export default function Canvas() {
                 {/* Zone Select (only when zones exist) */}
                 {zones.length > 0 && (
                     <>
-                        <div className="w-px h-5 bg-neutral-200" />
+                        <div className="w-px h-5 bg-neutral-200 dark:bg-neutral-700" />
                         <label className="sr-only" htmlFor="zone-select">Selected zone</label>
                         <select
                             id="zone-select"
@@ -994,8 +669,7 @@ export default function Canvas() {
                     <button
                         type="button"
                         onClick={() => {
-                            setBackgroundImage(null);
-                            saveBackgroundImage(null);
+                            patchCanvas({ backgroundImage: null });
                             setBgSelected(false);
                         }}
                         className="ui-icon-btn ui-icon-btn-danger"
@@ -1007,35 +681,48 @@ export default function Canvas() {
                 )}
             </div>
 
+
             {/* World */}
             <div
                 className="absolute top-0 left-0 origin-top-left will-change-transform"
                 style={{ transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})` }}
             >
+                {/* Connections Layer moved after Zones */}
 
                 {/* 直接在世界层渲染背景、网格等（无限画布） */}
                 {/* Background Image – 交互在后面实现 */}
+
                 {backgroundImage && (
                     <div
                         data-bg-image="true"
-                        className="absolute opacity-80"
+                        className="absolute opacity-80 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         style={{
-                            left: bgTransform.x,
-                            top: bgTransform.y,
+                            left: backgroundTransform.x,
+                            top: backgroundTransform.y,
                             width:
                                 ((typeof backgroundImage === 'object' && backgroundImage?.displayWidth) ||
                                     (typeof backgroundImage === 'object' && backgroundImage?.originalWidth) ||
-                                    1600) * (bgTransform.scale || 1),
+                                    1600) * (backgroundTransform.scale || 1),
                             height:
                                 ((typeof backgroundImage === 'object' && backgroundImage?.displayHeight) ||
                                     (typeof backgroundImage === 'object' && backgroundImage?.originalHeight) ||
-                                    900) * (bgTransform.scale || 1),
+                                    900) * (backgroundTransform.scale || 1),
                             pointerEvents: bgSelected ? 'auto' : 'none'
                         }}
                         onClick={(e) => {
                             if (!bgSelected) return;
                             e.stopPropagation();
                         }}
+                        onKeyDown={(e) => {
+                            if (!bgSelected) return;
+                            if (e.key === 'Backspace' || e.key === 'Delete') {
+                                patchCanvas({ backgroundImage: null });
+                                setBgSelected(false);
+                            }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Canvas Background Image"
                     >
                         <img
                             src={backgroundImage.dataUrl || backgroundImage}
@@ -1070,6 +757,8 @@ export default function Canvas() {
                     </div>
                 )}
 
+
+
                 {/* Zones */}
                 {Array.isArray(zones) && zones.map(z => {
                     const isSelected = z.id === selectedZoneId;
@@ -1090,7 +779,19 @@ export default function Canvas() {
                             <div
                                 data-zone-id={z.id}
                                 onClick={selectZone}
-                                className={`absolute rounded-2xl transition-all duration-200 backdrop-blur-sm
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        selectZone(e);
+                                    }
+                                    if (isSelected && (e.key === 'Backspace' || e.key === 'Delete')) {
+                                        deleteZone(z.id);
+                                    }
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Zone: ${z.title || 'Untitled'}`}
+                                className={`absolute rounded-2xl transition-all duration-200 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50
                                     ${isSelected || isHover || isLeaving ? 'z-10' : 'z-0'}
                                     ${isSelected
                                         ? 'border-blue-500 bg-blue-500/10 shadow-sm'
@@ -1198,6 +899,22 @@ export default function Canvas() {
                     );
                 })}
 
+                {/* Connections Layer (Rendered here to be ABOVE Zones but BELOW Notes) */}
+                <ConnectionsLayer
+                    connections={connections}
+                    notes={notes}
+                    connectionDrag={connectionDrag}
+                    draggingNoteIds={draggingNoteIds}
+                    cardWidth={CARD_W}
+                    cardHeight={CARD_H}
+                    selectedConnectionId={selectedConnectionId}
+                    onSelectConnection={setSelectedConnectionId}
+                    onDeleteConnection={(id) => deleteConnection(currentWorkspaceId, id)}
+                />
+
+                {/* Connections Layer (Moved above to top of World) */}
+                {/* <ConnectionsLayer ... removed duplicate > */}
+
                 {/* Notes Layer */}
                 {notes.map(note => (
                     <StickyNote
@@ -1208,50 +925,12 @@ export default function Canvas() {
                         onDelete={deleteNote}
                         isSelected={selectedNoteId === note.id}
                         onSelect={setSelectedNoteId}
-                        onExpand={() => setExpandedNoteId(note.id)}
-                        onCollapse={() => setExpandedNoteId(null)}
-                        viewport={viewport}
-                        onFork={(msg) => handleForkNote(note.id, msg)}
-                        onDragMove={(noteId, position, { first, last }) => {
-                            if (noteId !== note.id) return;
-                            // Clear zone selection when note drag starts
-                            if (first) {
-                                setSelectedZoneId(null);
-                            }
-
-                            // 获取当前位置对应的目标 zone
-                            const targetZoneId = pickHoverZoneId(zones, position);
-                            // 获取 note 的原始归属 zone
-                            const originalZoneId = note.zoneId;
-
-
-                            // 只有目标 zone 与原始 zone 不同时，才显示视觉反馈
-                            if (targetZoneId !== originalZoneId) {
-                                // 正在进入一个新 zone（从外部或从其他 zone 拖入）
-                                if (targetZoneId) {
-                                    setHoverZoneId(targetZoneId);
-                                } else {
-                                    setHoverZoneId(null);
-                                }
-                                // 正在离开原有 zone（拖出到外部或其他 zone）
-                                if (originalZoneId) {
-                                    setLeavingZoneId(originalZoneId);
-                                } else {
-                                    setLeavingZoneId(null);
-                                }
-                            } else {
-                                // 在同一个 zone 内拖动（或都在 null），不显示任何反馈
-                                setHoverZoneId(null);
-                                setLeavingZoneId(null);
-                            }
-
-                            if (last) {
-                                setHoverZoneId(null);
-                                setLeavingZoneId(null);
-                            }
-                        }}
+                        onExpand={handleExpandNote}
+                        zoom={viewport.zoom}
+                        onFork={handleForkNote}
+                        onDragMove={handleDragMove}
                         // Hide original note when expanded
-                        style={{ opacity: expandedNoteId === note.id ? 0 : 1 }}
+                        hidden={expandedNoteId === note.id}
                     />
                 ))}
 

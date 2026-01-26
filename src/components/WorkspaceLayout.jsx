@@ -34,7 +34,7 @@ export default function WorkspaceLayout({ children }) {
                 <div className="p-4 border-b border-black/5 dark:border-white/10 flex items-center justify-between font-semibold">
                     <div className="flex items-center gap-2">
                         <Layout size={20} />
-                        <span>Workspaces</span>
+                        <span>Project Nodal</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <ThemeToggle />
@@ -135,7 +135,7 @@ export default function WorkspaceLayout({ children }) {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 relative bg-neutral-50">
+            <div className="flex-1 relative bg-[rgb(var(--ui-bg))]">
                 {children}
             </div>
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { db } from '../db';
 import { v4 as uuidv4 } from 'uuid';
+import { pickZoneIdForNotePosition } from '../utils/zoneUtils';
 
 const createDefaultCanvas = () => ({
     schemaVersion: 1,
@@ -8,6 +9,7 @@ const createDefaultCanvas = () => ({
     backgroundTransform: { x: 0, y: 0, scale: 1 },
     sceneGraph: { version: 1, nodes: [] },
     notes: [],
+    connections: [], // { id, fromId, toId, type? }
     zones: [],
     viewport: { x: 0, y: 0, zoom: 1 }
 });
@@ -15,6 +17,11 @@ const createDefaultCanvas = () => ({
 const normalizeCanvas = (canvas) => {
     const raw = canvas && typeof canvas === 'object' ? canvas : {};
     const { drawings: _drawings, excalidrawElements: _excalidrawElements, ...input } = raw;
+
+    const validNotes = Array.isArray(input.notes)
+        ? input.notes.map(n => (n && typeof n === 'object' ? { zoneId: null, ...n } : n))
+        : [];
+    const validNoteIds = new Set(validNotes.map(n => n.id));
 
     const normalized = {
         ...createDefaultCanvas(),
@@ -28,8 +35,9 @@ const normalizeCanvas = (canvas) => {
                     nodes: Array.isArray(input.sceneGraph.nodes) ? input.sceneGraph.nodes : []
                 }
                 : { version: 1, nodes: [] },
-        notes: Array.isArray(input.notes)
-            ? input.notes.map(n => (n && typeof n === 'object' ? { zoneId: null, ...n } : n))
+        notes: validNotes,
+        connections: Array.isArray(input.connections)
+            ? input.connections.filter(c => c && c.fromId && c.toId && validNoteIds.has(c.fromId) && validNoteIds.has(c.toId))
             : [],
         zones: Array.isArray(input.zones) ? input.zones.map(z => ({
             ...z,
@@ -48,6 +56,8 @@ const normalizeCanvas = (canvas) => {
         !input.sceneGraph ||
         typeof input.sceneGraph !== 'object' ||
         !Array.isArray(input.sceneGraph.nodes) ||
+        !Array.isArray(input.connections) ||
+        (Array.isArray(input.connections) && input.connections.length !== normalized.connections.length) ||
         'excalidrawElements' in raw ||
         !input.viewport ||
         (Array.isArray(input.notes) &&
@@ -153,6 +163,53 @@ export const useStore = create((set, get) => ({
         }));
     },
 
+
+    // Connection Actions
+    addConnection: (workspaceId, fromId, toId) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        // Prevent duplicates
+        if (ws.canvas.connections && ws.canvas.connections.some(c =>
+            (c.fromId === fromId && c.toId === toId) ||
+            (c.fromId === toId && c.toId === fromId) // Optional: Undirected graph? Let's assume directed for now, or undirected checking both. Let's stick to unique link between two.
+        )) {
+            return;
+        }
+
+        const newConnection = {
+            id: uuidv4(),
+            fromId,
+            toId,
+            createdAt: Date.now()
+        };
+
+        const newConnections = [...(ws.canvas.connections || []), newConnection];
+        get().updateCanvas(workspaceId, { connections: newConnections });
+    },
+
+    deleteConnection: (workspaceId, connectionId) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const newConnections = (ws.canvas.connections || []).filter(c => c.id !== connectionId);
+        get().updateCanvas(workspaceId, { connections: newConnections });
+    },
+
+    // Explicitly expose a method to clean connections for a deleted note
+    // Note: The caller (component) handles the UI note deletion, but the store needs to handle the data consistency.
+    // However, currently `deleteNote` only exists inside the Canvas component as a local helper or passed via specific logic.
+    // Wait, looking at Canvas.jsx line 354: `deleteNote` updates local state.
+    // But `useStore` doesn't have a `deleteNote` action directly exposed for *logic*, it just has `updateCanvas`.
+    // We should probably help the component by providing a utility or just let the component handle it.
+    // "Simple approach": The component handles the array filtering.
+    // BUT, we need to expose a way for the component to easily know it needs to delete connections.
+    // Actually, `updateCanvas` is what persists data.
+    // So I will just add these helpers here so the component can call them.
+
+
     // Canvas Actions
     updateCanvas: async (workspaceId, patch) => {
         const state = get();
@@ -172,6 +229,212 @@ export const useStore = create((set, get) => ({
         // Persist to DB (Debounce could be added here if performance is an issue)
         // We update the whole workspace record because 'canvas' is a property of it
         await db.workspaces.update(workspaceId, { canvas: updatedCanvas });
+    },
+
+    // Note Actions
+    addNote: (workspaceId, note) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const newNotes = [...(ws.canvas.notes || []), note];
+        get().updateCanvas(workspaceId, { notes: newNotes });
+    },
+
+    updateNote: (workspaceId, noteId, patch) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const notes = ws.canvas.notes || [];
+        const zones = ws.canvas.zones || [];
+
+        const newNotes = notes.map(n => {
+            if (n.id !== noteId) return n;
+            const updated = { ...n, ...patch };
+            if (patch.position) {
+                const zoneId = pickZoneIdForNotePosition(zones, patch.position);
+                if (updated.zoneId !== zoneId) updated.zoneId = zoneId;
+            }
+            return updated;
+        });
+        get().updateCanvas(workspaceId, { notes: newNotes });
+    },
+
+    deleteNote: (workspaceId, noteId) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        // Filter out note
+        const newNotes = (ws.canvas.notes || []).filter(n => n.id !== noteId);
+
+        // Filter out connections attached to this note
+        const newConnections = (ws.canvas.connections || []).filter(c => c.fromId !== noteId && c.toId !== noteId);
+
+        get().updateCanvas(workspaceId, { notes: newNotes, connections: newConnections });
+    },
+
+    // Zone Actions
+    addZone: (workspaceId, zone) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const newZones = [...(ws.canvas.zones || []), zone];
+        get().updateCanvas(workspaceId, { zones: newZones });
+    },
+
+    updateZone: (workspaceId, zoneId, patch) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const newZones = (ws.canvas.zones || []).map(z => z.id === zoneId ? { ...z, ...patch } : z);
+        get().updateCanvas(workspaceId, { zones: newZones });
+    },
+
+    deleteZone: (workspaceId, zoneId) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const zones = ws.canvas.zones || [];
+        const notes = ws.canvas.notes || [];
+
+        // Helper to get zone and all its children
+        const getZoneSubtreeIds = (rootId) => {
+            const result = [rootId];
+            for (let i = 0; i < result.length; i += 1) {
+                const parentId = result[i];
+                for (const z of zones) {
+                    if (z.parentZoneId === parentId) result.push(z.id);
+                }
+            }
+            return result;
+        };
+
+        const zoneIdsToDelete = getZoneSubtreeIds(zoneId);
+        const newZones = zones.filter(z => !zoneIdsToDelete.includes(z.id));
+
+        // Detach notes from deleted zones
+        const newNotes = notes.map(n =>
+            zoneIdsToDelete.includes(n.zoneId) ? { ...n, zoneId: null } : n
+        );
+
+        get().updateCanvas(workspaceId, { zones: newZones, notes: newNotes });
+    },
+
+
+
+    moveZone: (workspaceId, zoneIds, delta) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const zones = ws.canvas.zones || [];
+        const notes = ws.canvas.notes || [];
+        const { dx, dy } = delta;
+
+        // Zones to identify base positions? 
+        // Actually, we usually apply delta to current state. 
+        // But for robust gesture handling, we might want atomic updates or just delta.
+        // The hook calculates new position based on 'base' captured at start.
+        // But wait, Actions generally work on current state.
+        // If we pass delta, we add to current. 
+        // For drag, it's better to pass *new positions* or imply delta applies to current state.
+        // Let's stick to updateZone (singular) or bulk update.
+        // Actually, moveZone is a bulk operation on a zone tree.
+        // But doing the tree traversal inside Action on every drag frame (16ms) might be costly if tree is huge.
+        // However, for typical size, it's fine.
+
+        // BETTER APPROACH for Action: `updateZones(patches)` where patches is [{id, patch}]
+        // The hook can calculate the new positions for all affected zones/notes and send a bulk update.
+        // This keeps the "geometry calculation" (what moves with what) in the Hook (or Helper), 
+        // and the Store just accepts the new state.
+
+        // WAIT. Linus principle: "Logic in Store".
+        // Who decides *what* moves? The "Zone Move" rule (children move with parent).
+        // That IS business logic.
+        // So the Action should take `zoneId` and `delta`, and the Store decides what else moves.
+
+        const getZoneSubtreeIds = (rootIds) => {
+            const result = [...rootIds];
+            for (let i = 0; i < result.length; i++) {
+                const parentId = result[i];
+                for (const z of zones) {
+                    if (z.parentZoneId === parentId && !result.includes(z.id)) result.push(z.id);
+                }
+            }
+            return result;
+        };
+
+        const targetIds = Array.isArray(zoneIds) ? zoneIds : [zoneIds];
+        const allMovingZoneIds = getZoneSubtreeIds(targetIds);
+
+        const newZones = zones.map(z =>
+            allMovingZoneIds.includes(z.id)
+                ? { ...z, bounds: { ...z.bounds, x: z.bounds.x + dx, y: z.bounds.y + dy }, manualBounds: { ...z.manualBounds, x: z.manualBounds.x + dx, y: z.manualBounds.y + dy } }
+                : z
+        );
+
+        const newNotes = notes.map(n =>
+            allMovingZoneIds.includes(n.zoneId)
+                ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
+                : n
+        );
+
+        get().updateCanvas(workspaceId, { zones: newZones, notes: newNotes });
+    },
+
+    resizeZone: (workspaceId, zoneId, newBounds) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+
+        const zones = ws.canvas.zones || [];
+        const notes = ws.canvas.notes || [];
+
+        // 1. Update Zone Bounds
+        const newZones = zones.map(z => z.id === zoneId ? { ...z, bounds: newBounds, manualBounds: newBounds } : z);
+
+        // 2. Clamp Notes
+        // Import constants if we can, or hardcode. Ideally pass constraints or utils.
+        const CARD_W = 200; // Copying for now to avoid circular dependency issues or pass as arg
+        const CARD_H = 100; // Logic duplication - implies "Good Taste" requires extracting config.
+        const ZONE_PADDING = 20;
+
+        const inner = {
+            x: newBounds.x + ZONE_PADDING,
+            y: newBounds.y + ZONE_PADDING,
+            w: newBounds.width - ZONE_PADDING * 2,
+            h: newBounds.height - ZONE_PADDING * 2
+        };
+
+        const newNotes = notes.map(n => {
+            if (n.zoneId !== zoneId) return n;
+            const px = Math.max(inner.x, Math.min(n.position.x, inner.x + inner.w - CARD_W));
+            const py = Math.max(inner.y, Math.min(n.position.y, inner.y + inner.h - CARD_H));
+            return (px === n.position.x && py === n.position.y) ? n : { ...n, position: { x: px, y: py } };
+        });
+
+        get().updateCanvas(workspaceId, { zones: newZones, notes: newNotes });
+    },
+
+
+
+    updateViewport: (workspaceId, patch) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+        get().updateCanvas(workspaceId, { viewport: { ...ws.canvas.viewport, ...patch } });
+    },
+
+    updateBackgroundTransform: (workspaceId, patch) => {
+        const state = get();
+        const ws = state.workspaces.find(w => w.id === workspaceId);
+        if (!ws) return;
+        get().updateCanvas(workspaceId, { backgroundTransform: { ...ws.canvas.backgroundTransform, ...patch } });
     },
 
     // Settings Actions

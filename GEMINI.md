@@ -8,6 +8,7 @@
 *   **Workspaces:** Multiple independent canvases for different contexts.
 *   **Spatial Canvas:** Infinite panning/zooming canvas to organize notes.
 *   **Sticky Notes:** Independent chat sessions that can be dragged, collapsed, and expanded.
+*   **Zones:** Organize notes into named, nestable areas. Notes inside zones move with them.
 *   **AI Integration:** Supports local LLMs (via Ollama) and cloud providers (OpenAI).
 *   **Privacy:** Data is stored locally using IndexedDB (Dexie.js). No server-side storage of chat history.
 
@@ -54,19 +55,46 @@
 ## Architecture & Key Components
 
 ### File Structure
-*   `src/store/useStore.js`: Central Zustand store. Manages `Workspaces`, `Canvas` state, and `Notes`. Handles interaction with IndexedDB.
-*   `src/services/ai_provider.js`: Handles AI API calls (Ollama/OpenAI) with streaming support.
-*   `src/db.js`: Dexie.js database schema and configuration.
-*   `src/components/`:
-    *   `Canvas.jsx`: The main workspace area. Handles pan/zoom and background interaction.
-    *   `StickyNote.jsx`: The core interactive unit. Handles chat UI, drag logic, and expand/collapse states.
-    *   `SettingsModal.jsx`: Configuration for AI providers.
-    *   `WorkspaceLayout.jsx`: Main application layout wrapper.
+
+**Core:**
+*   `src/store/useStore.js`: Zustand store. Single source of truth for Workspaces, Canvas, Notes, Zones. Handles IndexedDB persistence via `updateCanvas(workspaceId, patch)`.
+*   `src/services/ai_provider.js`: AI API calls (Ollama/OpenAI) with streaming.
+*   `src/db.js`: Dexie.js database schema.
+
+**Components:**
+*   `src/components/Canvas.jsx`: Main workspace. Coordinates gestures, notes, zones, and background.
+*   `src/components/StickyNote.jsx`: Chat UI with drag, expand/collapse, and AI integration.
+*   `src/components/canvas/ConnectionsLayer.jsx`: SVG layer for note connections.
+*   `src/components/SettingsModal.jsx`: AI provider configuration.
+*   `src/components/WorkspaceLayout.jsx`: Main layout wrapper.
+
+**Hooks:**
+*   `src/hooks/useCanvasGestures.js`: Canvas gesture handling (pan, zoom, zone drag/resize, background drag/resize).
+
+**Utilities:**
+*   `src/utils/zoneUtils.js`: Zone-related constants and helper functions.
+
+### Data Flow
+
+```
+┌─────────────────┐     patchCanvas()     ┌──────────────────┐
+│   Canvas.jsx    │ ──────────────────────▶│   useStore.js   │
+│   (UI Layer)    │                        │  (Zustand Store) │
+└─────────────────┘                        └────────┬─────────┘
+        ▲                                           │
+        │  zones, notes, viewport, etc.             │ updateCanvas()
+        │  (read from store)                        ▼
+        │                                  ┌──────────────────┐
+        └──────────────────────────────────│   IndexedDB      │
+                                           │   (Dexie.js)     │
+                                           └──────────────────┘
+```
 
 ### Data Model
-*   **Workspace:** The root entity. Contains one Canvas.
-*   **Canvas:** Holds the state of the background, drawings (planned), and list of Notes.
-*   **Note:** Represents a single chat session. Contains position, dimensions, state (expanded/collapsed), and messages.
+*   **Workspace:** Root entity. Contains one Canvas.
+*   **Canvas:** `{ notes[], zones[], connections[], viewport, backgroundImage, backgroundTransform }`
+*   **Zone:** Named area for organizing notes. Supports nesting.
+*   **Note:** Single chat session with position, dimensions, messages, and optional zoneId.
 
 ## Development Conventions
 

@@ -17,7 +17,7 @@ class LLMProvider {
         this.settings = settings;
     }
 
-    async generateStream(messages, onChunk) {
+    async generateStream() {
         throw new Error('Not implemented');
     }
 }

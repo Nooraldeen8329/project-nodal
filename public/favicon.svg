@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Sticky Note Background -->
+  <path d="M4 4h18l6 6v18H4z" fill="#FDE047" stroke="#EAB308" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Folded Corner -->
+  <path d="M22 4v6h6" fill="#FEF08A" stroke="#EAB308" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Chat Bubble Lines -->
+  <g fill="#A16207">
+    <rect x="8" y="12" width="12" height="2" rx="1"/>
+    <rect x="8" y="16" width="16" height="2" rx="1"/>
+    <rect x="8" y="20" width="8" height="2" rx="1"/>
+  </g>
+</svg>
