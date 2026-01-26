@@ -46,3 +46,16 @@ Most "AI Workspaces" are just SaaS traps waiting to lock our data in.
 It is a **Thinking OS**.
 
 Stop scrolling. Start mapping.
+
+---
+### ⚠️ A Note on Web Deployment (Vercel/Netlify)
+If you are viewing this demo online (HTTPS), you **cannot** connect to a local Ollama instance (HTTP) due to browser security policies (Mixed Content Blocking).
+
+*   **To use Local Ollama**: Please [clone this repo](https://github.com/yibie/project-nodal) and run it locally:
+    ```bash
+    git clone https://github.com/yibie/project-nodal.git
+    cd project-nodal
+    npm install
+    npm run dev
+    ```
+*   **To use the Online Demo**: Please use an **OpenAI** or **DeepSeek** API Key in the settings.

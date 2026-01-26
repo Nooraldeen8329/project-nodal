@@ -106,6 +106,15 @@ export default function SettingsModal({ onClose }) {
                     {/* Configuration Fields */}
                     {settings.provider === AI_PROVIDERS.OLLAMA && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            {/* Mixed Content Warning */}
+                            {typeof window !== 'undefined' && window.location.protocol === 'https:' && !window.location.hostname.includes('localhost') && (
+                                <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900/50 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+                                    <strong>Browser Security Warning:</strong><br />
+                                    You are using HTTPS. Browsers will block connections to local Ollama (HTTP).<br />
+                                    To use Ollama, please <strong>clone and run this app locally</strong>.
+                                </div>
+                            )}
+
                             <div className="space-y-1">
                                 <label htmlFor="settings-base-url" className="text-sm font-medium text-neutral-800 dark:text-neutral-300">Base URL</label>
                                 <input
