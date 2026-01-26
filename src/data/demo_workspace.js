@@ -13,6 +13,8 @@ export const DEMO_WORKSPACE = {
         schemaVersion: 1,
         viewport: { x: 0, y: 0, zoom: 1 },
         backgroundTransform: { x: 0, y: 0, scale: 1 },
+        backgroundImage: null,
+        sceneGraph: { version: 1, nodes: [] },
         notes: [
             {
                 id: NOTE_1_ID,
