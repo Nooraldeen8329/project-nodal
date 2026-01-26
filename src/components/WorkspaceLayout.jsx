@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import SettingsModal from './SettingsModal';
-import { Plus, Layout, Trash2, Edit2, Check, X, Settings } from 'lucide-react';
+import ManifestoModal from './ManifestoModal';
+import { Plus, Layout, Trash2, Edit2, Check, X, Settings, BookOpen } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 export default function WorkspaceLayout({ children }) {
@@ -9,6 +10,7 @@ export default function WorkspaceLayout({ children }) {
     const [isEditing, setIsEditing] = useState(null);
     const [editName, setEditName] = useState('');
     const [showSettings, setShowSettings] = useState(false);
+    const [showManifesto, setShowManifesto] = useState(false);
 
     const handleCreate = () => {
         const name = prompt('Enter workspace name:');
@@ -32,12 +34,21 @@ export default function WorkspaceLayout({ children }) {
             {/* Sidebar */}
             <div className="w-72 ui-sidebar flex flex-col">
                 <div className="p-4 border-b border-black/5 dark:border-white/10 flex items-center justify-between font-semibold">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 select-none cursor-pointer" onClick={() => setShowManifesto(true)}>
                         <Layout size={20} />
                         <span>Project Nodal</span>
                     </div>
                     <div className="flex items-center gap-1">
                         <ThemeToggle />
+                        <button
+                            type="button"
+                            onClick={() => setShowManifesto(true)}
+                            className="ui-icon-btn"
+                            aria-label="Read Manifesto"
+                            title="Manifesto"
+                        >
+                            <BookOpen size={16} />
+                        </button>
                         <button
                             type="button"
                             onClick={() => setShowSettings(true)}
@@ -141,6 +152,7 @@ export default function WorkspaceLayout({ children }) {
 
             {/* Modals */}
             {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+            {showManifesto && <ManifestoModal onClose={() => setShowManifesto(false)} />}
         </div>
     );
 }
