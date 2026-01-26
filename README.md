@@ -1,5 +1,7 @@
 # Project Nodal: Chat is a Line, Thought is a Network.
 
+> **🎥 [Watch the 15s Demo Video (MP4)](image/demo.mp4)**
+
 **The "Chat Interface" is the biggest lie in modern computing.**
 
 Open ChatGPT, Claude, or Gemini. What do we see?
