@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { db } from '../db';
 import { v4 as uuidv4 } from 'uuid';
 import { pickZoneIdForNotePosition } from '../utils/zoneUtils';
+import { DEMO_WORKSPACE } from '../data/demo_workspace';
 
 const createDefaultCanvas = () => ({
     schemaVersion: 1,
@@ -97,12 +98,6 @@ export const useStore = create((set, get) => ({
             await Promise.all(updates.map(u => db.workspaces.update(u.id, { canvas: u.canvas })));
         }
 
-        const workspaces = normalizedWorkspaces;
-        import { DEMO_WORKSPACE } from '../data/demo_workspace';
-
-        // ... (existing imports)
-
-        // ...
 
         const workspaces = normalizedWorkspaces;
         if (workspaces.length === 0) {
