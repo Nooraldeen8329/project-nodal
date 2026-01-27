@@ -233,7 +233,7 @@ export default function SmartViewLayer({ onClose }) {
                             height: zone.height
                         }}
                     >
-                        <div className="absolute -top-10 left-0 text-xl font-bold text-black dark:text-white uppercase tracking-wide px-2 flex items-center">
+                        <div className="absolute -top-10 left-0 text-xl font-bold text-neutral-400 uppercase tracking-wide px-2 flex items-center">
                             <div className="w-8 h-1 bg-blue-500 rounded-full mr-3"></div>
                             {zone.title}
                         </div>
