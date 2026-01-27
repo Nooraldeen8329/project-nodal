@@ -43,7 +43,12 @@ export default function Canvas() {
         moveZone,
         resizeZone,
         updateViewport,
-        updateBackgroundTransform
+        updateBackgroundTransform,
+        selectedNoteId,
+        setSelectedNoteId,
+        expandedNoteId,
+        setExpandedNoteId,
+        expandedNoteReadOnly
     } = useStore();
     const currentWorkspace = workspaces.find(w => w.id === currentWorkspaceId);
 
@@ -70,8 +75,8 @@ export default function Canvas() {
 
     // ========== 仅 UI 状态（不持久化） ==========
     const [bgSelected, setBgSelected] = useState(false);
-    const [selectedNoteId, setSelectedNoteId] = useState(null);
-    const [expandedNoteId, setExpandedNoteId] = useState(null);
+    // selectedNoteId removed (using Global Store)
+    // expandedNoteId removed (using Global Store)
     const [modalJustClosed, setModalJustClosed] = useState(false);
     const [selectedZoneId, setSelectedZoneId] = useState(null);
     const [hoverZoneId, setHoverZoneId] = useState(null);
@@ -276,7 +281,12 @@ export default function Canvas() {
         }
     }, [zones, notes, handleNoteDrag]);
 
+    const lastDeselectRef = useRef(0);
+
     const handleDoubleTap = (e) => {
+        // Block creation if we just deselected a note (prevents "Deselect + Create" on double click)
+        if (Date.now() - lastDeselectRef.current < 500) return;
+
         // Block note creation when a modal is open or just closed
         if (expandedNoteId || modalJustClosed) {
             // Reset the just‑closed flag after it has blocked this click
@@ -422,6 +432,12 @@ export default function Canvas() {
             setSelectedZoneId(null);
         }
         setSelectedConnectionId(null); // Added: Click background/unhandled areas deselects connection
+
+        // Smart Deselect: Record time if we are actually Deselecting a note
+        if (selectedNoteId) {
+            lastDeselectRef.current = Date.now();
+            setSelectedNoteId(null);
+        }
     };
 
     const handleExpandNote = useCallback((noteId) => {
@@ -552,6 +568,7 @@ export default function Canvas() {
                                             onExpand={() => { }}
                                             zoom={viewport.zoom}
                                             onFork={handleForkNote}
+                                            readOnly={expandedNoteReadOnly}
                                         />
                                     </div>
                                 </div>

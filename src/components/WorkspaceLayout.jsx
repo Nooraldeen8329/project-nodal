@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import SettingsModal from './SettingsModal';
 import ManifestoModal from './ManifestoModal';
-import { Plus, Layout, Trash2, Edit2, Check, X, Settings, BookOpen } from 'lucide-react';
+import { Plus, Layout, Trash2, Edit2, Check, X, Settings, BookOpen, Sparkles } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import SmartViewLayer from './SmartViewLayer';
+
 
 export default function WorkspaceLayout({ children }) {
     const { workspaces, currentWorkspaceId, addWorkspace, switchWorkspace, deleteWorkspace, updateWorkspaceName } = useStore();
@@ -11,6 +13,8 @@ export default function WorkspaceLayout({ children }) {
     const [editName, setEditName] = useState('');
     const [showSettings, setShowSettings] = useState(false);
     const [showManifesto, setShowManifesto] = useState(false);
+    const [showSmartView, setShowSmartView] = useState(false);
+
 
     const handleCreate = () => {
         const name = prompt('Enter workspace name:');
@@ -41,6 +45,16 @@ export default function WorkspaceLayout({ children }) {
                     <div className="flex items-center gap-1">
                         <ThemeToggle />
                         <button
+                            type="button"
+                            onClick={() => setShowSmartView(!showSmartView)}
+                            className={`ui-icon-btn ${showSmartView ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                            aria-label="Toggle Smart View"
+                            title="Experimental: Smart View"
+                        >
+                            <Sparkles size={16} />
+                        </button>
+                        <button
+
                             type="button"
                             onClick={() => setShowManifesto(true)}
                             className="ui-icon-btn"
@@ -153,6 +167,7 @@ export default function WorkspaceLayout({ children }) {
             {/* Modals */}
             {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
             {showManifesto && <ManifestoModal onClose={() => setShowManifesto(false)} />}
+            {showSmartView && <SmartViewLayer onClose={() => setShowSmartView(false)} />}
         </div>
     );
 }

@@ -79,6 +79,18 @@ export const useStore = create((set, get) => ({
     workspaces: [],
     currentWorkspaceId: null,
     isLoading: true,
+    selectedNoteId: null, // Lifted from Canvas for global access (Smart View)
+    expandedNoteId: null, // Lifted from Canvas for global modal access
+    expandedNoteReadOnly: false,
+
+    setSelectedNoteId: (noteId) => set({ selectedNoteId: noteId }),
+    setExpandedNoteId: (noteOrId) => {
+        if (typeof noteOrId === 'object' && noteOrId !== null) {
+            set({ expandedNoteId: noteOrId.id, expandedNoteReadOnly: !!noteOrId.readOnly });
+        } else {
+            set({ expandedNoteId: noteOrId, expandedNoteReadOnly: false });
+        }
+    },
 
     // Initialize store from DB
     init: async () => {

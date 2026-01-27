@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
     provider: AI_PROVIDERS.OLLAMA,
     apiKey: '', // Only for OpenAI
     model: 'llama3', // Default for Ollama
+    embeddingModel: '', // Optional: specific model for embeddings
     baseUrl: 'http://localhost:11434' // Default for Ollama
 };
 
@@ -18,6 +19,10 @@ class LLMProvider {
     }
 
     async generateStream() {
+        throw new Error('Not implemented');
+    }
+
+    async getEmbeddings(text) {
         throw new Error('Not implemented');
     }
 }
@@ -62,6 +67,25 @@ class OllamaProvider extends LLMProvider {
                 }
             }
         }
+    }
+
+    async getEmbeddings(text) {
+        const model = this.settings.embeddingModel || this.settings.model;
+        const response = await fetch(`${this.settings.baseUrl}/api/embeddings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: model,
+                prompt: text
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama Embedding Error: ${response.statusText}`);
+        }
+
+        const json = await response.json();
+        return json.embedding;
     }
 }
 
@@ -109,6 +133,29 @@ class OpenAIProvider extends LLMProvider {
                 }
             }
         }
+    }
+
+    async getEmbeddings(text) {
+        const model = this.settings.embeddingModel || 'text-embedding-3-small';
+        const response = await fetch('https://api.openai.com/v1/embeddings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.settings.apiKey}`
+            },
+            body: JSON.stringify({
+                input: text,
+                model: model
+            })
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(`OpenAI Embedding Error: ${err.error?.message || response.statusText}`);
+        }
+
+        const json = await response.json();
+        return json.data[0].embedding;
     }
 }
 

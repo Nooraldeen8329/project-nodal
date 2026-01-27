@@ -39,7 +39,8 @@ const StickyNote = React.memo(({
     onFork,
     onDragMove,
     variant = 'canvas',
-    hidden = false
+    hidden = false,
+    readOnly = false
 }) => {
     const isModal = variant === 'modal';
     const [isDragging, setIsDragging] = useState(false);
@@ -186,7 +187,7 @@ const StickyNote = React.memo(({
                     ${isModal ? 'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[640px] h-[82vh] z-50 shadow-[0_28px_120px_rgba(15,23,42,0.32)] rounded-2xl' : 'absolute left-0 top-0 rounded-2xl shadow-[0_16px_60px_rgba(15,23,42,0.16)]'}
                     ${!isModal ? 'group' : ''} 
                     flex flex-col
-                    ${!isModal && isSelected ? 'border border-blue-500/70' : 'border border-black/10'}
+                    ${!isModal && isSelected ? 'ring-2 ring-blue-500 z-50' : 'border border-black/10'}
                     ${!isModal && isDragging ? 'ring-2 ring-blue-500/20' : ''}
                     ${!isModal ? 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white touch-none' : ''}
                 `}
@@ -254,17 +255,19 @@ const StickyNote = React.memo(({
                                         onClick={(e) => e.stopPropagation()}
                                     />
                                 ) : (
-                                    <div className="flex items-center gap-2 group/title cursor-pointer w-full" onClick={() => setIsEditingTitle(true)}>
+                                    <div className="flex items-center gap-2 group/title cursor-pointer w-full" onClick={() => !readOnly && setIsEditingTitle(true)}>
                                         <span className={`text-sm font-semibold truncate ${!note.title ? 'text-neutral-400 italic' : 'text-neutral-800'}`}>
                                             {note.title || 'Untitled Note'}
                                         </span>
-                                        <button
-                                            className="ui-icon-btn opacity-0 group-hover/title:opacity-100 transition-opacity"
-                                            title="Edit Title"
-                                            aria-label="Edit Title"
-                                        >
-                                            <Pencil size={12} />
-                                        </button>
+                                        {!readOnly && (
+                                            <button
+                                                className="ui-icon-btn opacity-0 group-hover/title:opacity-100 transition-opacity"
+                                                title="Edit Title"
+                                                aria-label="Edit Title"
+                                            >
+                                                <Pencil size={12} />
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -279,15 +282,17 @@ const StickyNote = React.memo(({
                                 >
                                     <Minimize2 size={16} />
                                 </button>
-                                <button
-                                    type="button"
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
-                                    className="ui-icon-btn ui-icon-btn-danger"
-                                    aria-label="Delete note"
-                                >
-                                    <X size={12} />
-                                </button>
+                                {!readOnly && (
+                                    <button
+                                        type="button"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
+                                        className="ui-icon-btn ui-icon-btn-danger"
+                                        aria-label="Delete note"
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ) : (
@@ -399,7 +404,13 @@ const StickyNote = React.memo(({
                                                         e.stopPropagation();
                                                         onFork && onFork(note.id, msg);
                                                     }}
-                                                    className={`absolute -top-2 ${msg.role === 'user' ? '-left-2' : '-right-2'} p-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${msg.role === 'user' ? 'bg-neutral-800 text-white hover:bg-neutral-700' : 'bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-800'}`}
+                                                    disabled={readOnly}
+                                                    className={`absolute -top-2 ${msg.role === 'user' ? '-left-2' : '-right-2'} p-1.5 rounded-full shadow-sm 
+                                            opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity 
+                                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 
+                                            ${readOnly ? 'hidden' : ''}
+                                            ${msg.role === 'user' ? 'bg-neutral-800 text-white hover:bg-neutral-700' : 'bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-800'}
+                                        `}
                                                     title="Fork to new note"
                                                     aria-label="Fork this message to a new note"
                                                 >
@@ -418,76 +429,78 @@ const StickyNote = React.memo(({
                                     ))}
                                 </div>
 
-                                {/* Input */}
-                                <div className="mt-auto pt-2 border-t border-black/5">
-                                    <input
-                                        ref={chatInputRef}
-                                        autoFocus
-                                        className="ui-input bg-white/60 border-transparent focus-visible:ring-yellow-500/50 focus-visible:ring-offset-0"
-                                        placeholder="Type a message..."
-                                        aria-label="Type a message"
-                                        onKeyDown={async (e) => {
-                                            if (e.key === 'Enter' && e.target.value.trim()) {
-                                                const text = e.target.value;
-                                                e.target.value = '';
+                                {/* Input - Hide if Read Only */}
+                                {!readOnly && (
+                                    <div className="mt-auto pt-2 border-t border-black/5">
+                                        <input
+                                            ref={chatInputRef}
+                                            autoFocus
+                                            className="ui-input bg-white/60 border-transparent focus-visible:ring-yellow-500/50 focus-visible:ring-offset-0"
+                                            placeholder="Type a message..."
+                                            aria-label="Type a message"
+                                            onKeyDown={async (e) => {
+                                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                                    const text = e.target.value;
+                                                    e.target.value = '';
 
-                                                // Add User Message
-                                                const userMsg = { role: 'user', content: text, timestamp: Date.now() };
-                                                const newMessages = [...(note.messages || []), userMsg];
-                                                onUpdate(note.id, { messages: newMessages });
+                                                    // Add User Message
+                                                    const userMsg = { role: 'user', content: text, timestamp: Date.now() };
+                                                    const newMessages = [...(note.messages || []), userMsg];
+                                                    onUpdate(note.id, { messages: newMessages });
 
-                                                // Add AI Placeholder
-                                                const aiMsgId = Date.now() + 1;
-                                                const aiMsg = { role: 'assistant', content: '...', timestamp: aiMsgId };
-                                                const messagesWithAi = [...newMessages, aiMsg];
-                                                onUpdate(note.id, { messages: messagesWithAi });
+                                                    // Add AI Placeholder
+                                                    const aiMsgId = Date.now() + 1;
+                                                    const aiMsg = { role: 'assistant', content: '...', timestamp: aiMsgId };
+                                                    const messagesWithAi = [...newMessages, aiMsg];
+                                                    onUpdate(note.id, { messages: messagesWithAi });
 
-                                                try {
-                                                    const provider = createAIProvider(settings);
-                                                    let fullContent = '';
+                                                    try {
+                                                        const provider = createAIProvider(settings);
+                                                        let fullContent = '';
 
-                                                    await provider.generateStream(newMessages, (chunk) => {
-                                                        fullContent += chunk;
-                                                        const updatedAiMsg = { ...aiMsg, content: fullContent };
-                                                        const updatedMessages = [...newMessages, updatedAiMsg];
-                                                        onUpdate(note.id, { messages: updatedMessages });
-                                                    });
+                                                        await provider.generateStream(newMessages, (chunk) => {
+                                                            fullContent += chunk;
+                                                            const updatedAiMsg = { ...aiMsg, content: fullContent };
+                                                            const updatedMessages = [...newMessages, updatedAiMsg];
+                                                            onUpdate(note.id, { messages: updatedMessages });
+                                                        });
 
-                                                    // Auto-summary (Run AFTER chat is done to avoid resource contention)
-                                                    // Only run if NO manual title is set
-                                                    if (!note.title && (!note.summary || !note.summary.trim()) && newMessages.length === 1) {
-                                                        try {
-                                                            // Use a fresh provider instance just in case
-                                                            const summaryProvider = createAIProvider(settings);
-                                                            const summaryPrompt = [
-                                                                {
-                                                                    role: 'system',
-                                                                    content:
-                                                                        'Write a concise summary in 2-3 short lines. No markdown, no bullets, no quotes. Return ONLY the summary.'
-                                                                },
-                                                                { role: 'user', content: `User: ${text}\n\nAssistant: ${fullContent}` }
-                                                            ];
+                                                        // Auto-summary (Run AFTER chat is done to avoid resource contention)
+                                                        // Only run if NO manual title is set
+                                                        if (!note.title && (!note.summary || !note.summary.trim()) && newMessages.length === 1) {
+                                                            try {
+                                                                // Use a fresh provider instance just in case
+                                                                const summaryProvider = createAIProvider(settings);
+                                                                const summaryPrompt = [
+                                                                    {
+                                                                        role: 'system',
+                                                                        content:
+                                                                            'Write a concise summary in 2-3 short lines. No markdown, no bullets, no quotes. Return ONLY the summary.'
+                                                                    },
+                                                                    { role: 'user', content: `User: ${text}\n\nAssistant: ${fullContent}` }
+                                                                ];
 
-                                                            let generatedSummary = '';
-                                                            await summaryProvider.generateStream(summaryPrompt, (chunk) => {
-                                                                generatedSummary += chunk;
-                                                            });
+                                                                let generatedSummary = '';
+                                                                await summaryProvider.generateStream(summaryPrompt, (chunk) => {
+                                                                    generatedSummary += chunk;
+                                                                });
 
-                                                            if (generatedSummary.trim()) {
-                                                                onUpdate(note.id, { summary: generatedSummary.trim() });
+                                                                if (generatedSummary.trim()) {
+                                                                    onUpdate(note.id, { summary: generatedSummary.trim() });
+                                                                }
+                                                            } catch (err) {
+                                                                console.warn('Auto-summary failed:', err);
                                                             }
-                                                        } catch (err) {
-                                                            console.warn('Auto-summary failed:', err);
                                                         }
+                                                    } catch (err) {
+                                                        const errorMsg = { ...aiMsg, content: `Error: ${err.message}` };
+                                                        onUpdate(note.id, { messages: [...newMessages, errorMsg] });
                                                     }
-                                                } catch (err) {
-                                                    const errorMsg = { ...aiMsg, content: `Error: ${err.message}` };
-                                                    onUpdate(note.id, { messages: [...newMessages, errorMsg] });
                                                 }
-                                            }
-                                        }}
-                                    />
-                                </div>
+                                            }}
+                                        />
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
